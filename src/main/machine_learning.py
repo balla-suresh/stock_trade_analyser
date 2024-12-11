@@ -1,4 +1,4 @@
-from src.lib.tools.downloader import Dowloader
+from src.lib.tools.downloader import Downloader
 from src.lib.models.ml import *
 from src.lib.tools.log_utils import LoggerUtils
 import pandas as pd
@@ -18,7 +18,7 @@ logger.info("Started testing")
 
 file_utils = FileUtils()
 file_utils.clean()
-loader = Dowloader(period=config["download"]["period"], interval=config["download"]
+loader = Downloader(period=config["download"]["period"], interval=config["download"]
                    ["interval"], is_download=config["download"]["is_download"], file_utils=file_utils)
 data = loader.download()
 ticker_list = loader.get_ticker_list()

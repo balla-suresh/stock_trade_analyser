@@ -1,4 +1,4 @@
-from src.lib.tools.downloader import Dowloader
+from src.lib.tools.downloader import Downloader
 from src.lib.models.ta import SuperTrend
 from src.lib.tools.log_utils import LoggerUtils
 import pandas as pd
@@ -37,8 +37,8 @@ logger.info("Started testing")
 
 file_utils = FileUtils(data_type="intraday")
 file_utils.clean()
-loader = Dowloader(period=config["download"]["period"], interval=config["download"]
-                   ["interval"], is_download=config["download"]["is_download"], file_utils=file_utils)
+loader = Downloader(period=config["download"]["period"], interval=config["download"]
+                   ["interval"], is_download=config["download"]["is_download"], file_utils=file_utils, downloader="tv")
 data = loader.download()
 ticker_list = loader.get_ticker_list()
 
@@ -57,6 +57,8 @@ lower = []
 differences = []
 for each_ticker in ticker_list:
     # current_data = data[each_ticker]
+    if isinstance(each_ticker, dict):
+        each_ticker = each_ticker['symbol']
     current_data = file_utils.import_csv(each_ticker)
     current_data = current_data.dropna()
     current_data = current_data.rename(columns=str.lower)

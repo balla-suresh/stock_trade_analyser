@@ -1,4 +1,4 @@
-from src.lib.tools.downloader import Dowloader
+from src.lib.tools.downloader import Downloader
 from src.lib.models.ta import HeikinAshi
 from src.lib.tools.log_utils import LoggerUtils
 import pandas as pd
@@ -16,7 +16,7 @@ logger.info("Started testing")
 
 file_utils = FileUtils()
 file_utils.clean()
-loader = Dowloader(period=period, interval=interval,is_download=is_download,file_utils=file_utils)
+loader = Downloader(period=period, interval=interval, is_download=is_download, file_utils=file_utils)
 data = loader.download()
 ticker_list = loader.get_ticker_list()
 heikin_ashi = HeikinAshi()

@@ -11,7 +11,7 @@ from datetime import datetime
 from src.lib.tools.data_utils import *
 from src.lib.models.model import *
 from src.lib.tools.log_utils import LoggerUtils
-from src.lib.tools.downloader import Dowloader
+from src.lib.tools.downloader import Downloader
 from src.lib.tools.file_utils import FileUtils
 
 import matplotlib.pyplot as plt
@@ -26,7 +26,7 @@ logger.info("Started Predicting")
 
 file_utils = FileUtils()
 file_utils.clean()
-loader = Dowloader(period=period, interval=interval, is_download=is_download)
+loader = Downloader(period=period, interval=interval, is_download=is_download)
 data = loader.download()
 ticker_list = loader.get_ticker_list()
 

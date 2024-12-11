@@ -1,3 +1,6 @@
+import re
+from enum import Enum
+
 import yfinance as yf
 import time
 import logging
@@ -8,12 +11,12 @@ from src.lib.tools.file_utils import FileUtils
 logger = logging.getLogger(__name__)
 
 
-class Dowloader:
+class Downloader:
     logger.info("Started Downloader")
     ticker_list = []
     is_download = True
 
-    def __init__(self, period: str = '1y', interval: str = '1d', is_threads: bool = True, is_download: bool = True, n_bars: int = 0, file_utils: FileUtils = FileUtils()):
+    def __init__(self, downloader: str = "yahoo", period: str = '1y', interval: str = '1d', is_threads: bool = True, is_download: bool = True, n_bars: int = 0, file_utils: FileUtils = FileUtils()):
         self.period = '1y' if period is None else period
         self.interval = '1d' if interval is None else interval
         self.is_threads = is_threads
@@ -21,14 +24,25 @@ class Dowloader:
         self.is_download = is_download
         self.file_utils = file_utils
         self.n_bars = n_bars
-        if n_bars:
+        self.downloader = downloader
+        if downloader == "tv":
             self.ticker_list = self.file_utils.read_tv_ticker()
+            logger.info(type(self.interval))
+            if not isinstance(self.interval, Enum):
+                self.interval = Interval.in_15_minute
+            if self.n_bars == 0:
+                self.n_bars = 1000
         else:
             self.ticker_list = self.file_utils.read_ticker()
         # print(self.ticker_list)
         
-
     def download(self):
+        if self.downloader == "tv":
+            return self.tv_download()
+        else:
+            return self.yf_download()
+
+    def yf_download(self):
         logger.info("In Download")
         data = pd.DataFrame()
         new_data = None

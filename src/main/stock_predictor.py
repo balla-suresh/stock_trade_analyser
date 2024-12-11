@@ -12,7 +12,7 @@ from datetime import timedelta
 from src.lib.tools.data_utils import *
 from src.lib.models.model import *
 from src.lib.tools.log_utils import LoggerUtils
-from src.lib.tools.downloader import Dowloader
+from src.lib.tools.downloader import Downloader
 from src.lib.tools.file_utils import FileUtils
 
 import matplotlib.pyplot as plt
@@ -49,8 +49,8 @@ logger = None
 file_utils = None
 logger = LoggerUtils("stock_predictor").get_logger()
 file_utils = FileUtils()
-loader = Dowloader(period=config["download"]["period"], interval=config["download"].get("interval"),
-                   is_download=config["download"]["is_download"], file_utils=file_utils)
+loader = Downloader(period=config["download"]["period"], interval=config["download"].get("interval"),
+                    is_download=config["download"]["is_download"], file_utils=file_utils)
 
 # normalize
 scaler = Normalizer()

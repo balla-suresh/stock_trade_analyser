@@ -2,7 +2,7 @@ import pandas as pd
 import pandas_ta as ta
 from src.lib.tools.log_utils import LoggerUtils
 from src.lib.tools.file_utils import FileUtils
-from src.lib.tools.downloader import Dowloader
+from src.lib.tools.downloader import Downloader
 from tvDatafeed import TvDatafeed, Interval
 
 # tv = TvDatafeed("sureshballa", "Sunis*1234567890123")
@@ -38,7 +38,7 @@ logger.info("Started testing")
 file_utils = FileUtils(data_type="intraday")
 file_utils.clean()
 
-loader = Dowloader(interval=Interval.in_15_minute,n_bars=1000,is_download=config["download"]["is_download"],file_utils=file_utils)
+loader = Downloader(interval=Interval.in_15_minute, n_bars=1000, is_download=config["download"]["is_download"], file_utils=file_utils)
 
 ticker_list = loader.get_ticker_list()
 data = loader.tv_download()

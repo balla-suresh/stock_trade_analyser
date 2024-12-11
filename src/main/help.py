@@ -2,7 +2,7 @@ import pandas as pd
 import pandas_ta as ta
 from src.lib.tools.log_utils import LoggerUtils
 from src.lib.tools.file_utils import FileUtils
-from src.lib.tools.downloader import Dowloader
+from src.lib.tools.downloader import Downloader
 
 config = {
     "download": {
@@ -36,7 +36,7 @@ logger.info("Started testing")
 
 file_utils = FileUtils(data_type="intraday" )
 file_utils.clean()
-loader = Dowloader(period=config["download"]["period"], interval=config["download"]
+loader = Downloader(period=config["download"]["period"], interval=config["download"]
                    ["interval"], is_download=config["download"]["is_download"], file_utils=file_utils)
 data = loader.download()
 ticker_list = loader.get_ticker_list()
