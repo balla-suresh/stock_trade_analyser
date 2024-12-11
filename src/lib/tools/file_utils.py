@@ -40,7 +40,7 @@ class FileUtils:
             reader = csv.reader(csvfile, delimiter=',')
             name = None
             for row in reader:
-                if row[0]:
+                if row and row[0]:
                     ticker_list.append(row[0])
         return ticker_list
 

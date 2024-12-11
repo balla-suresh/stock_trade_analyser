@@ -16,18 +16,13 @@ config = {
     "download": {
         "interval": "15m",
         "period": "10d",
-        "is_download": False
+        "is_download": False,
+        "data_type": "intraday"
     },
     "supertrend": {
         "lookback": 10,
         "multiplier": 3,
         "intermediate": False
-    },
-    "helkin_ashi": {
-        "input_size": 1,  # since we are only using 1 feature, close price
-        "num_lstm_layers": 3,
-        "lstm_size": 64,
-        "dropout": 0.2,
     }
 }
 
@@ -35,10 +30,10 @@ logger = None
 logger = LoggerUtils("super_trend").get_logger()
 logger.info("Started testing")
 
-file_utils = FileUtils(data_type="intraday")
+file_utils = FileUtils(data_type=config["download"]["data_type"])
 file_utils.clean()
 loader = Downloader(period=config["download"]["period"], interval=config["download"]
-                   ["interval"], is_download=config["download"]["is_download"], file_utils=file_utils, downloader="tv")
+                   ["interval"], is_download=config["download"]["is_download"], file_utils=file_utils)
 data = loader.download()
 ticker_list = loader.get_ticker_list()
 
