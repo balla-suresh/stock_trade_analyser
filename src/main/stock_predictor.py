@@ -22,9 +22,9 @@ import json
 
 config = {
     "download": {
-        "interval": "15m",
-        "period": "1mo",
-        "is_download": False
+        "interval": "1d",
+        "period": "1y",
+        "is_download": True
     },
     "data": {
         "window_size": 20,
@@ -97,7 +97,7 @@ def predict(each_ticker):
         optimizer, step_size=config["training"]["scheduler_step_size"], gamma=0.1)
 
     # begin training
-    if not config["download"]["is_download"]:
+    if config["download"]["is_download"]:
         min_loss = np.Inf
         for epoch in range(config["training"]["num_epoch"]):
             loss_train, lr_train = run_epoch(
@@ -114,7 +114,7 @@ def predict(each_ticker):
                     '     New Minimum Loss: {:.10f} ----> {:.10f}\n'.format(min_loss, loss_train))
                 min_loss = loss_train
                 torch.save(model.state_dict(),
-                           file_utils.get_predictions() + '/' + each_ticker + '.pt')
+                           file_utils.get_predictions() + '/' + file_utils.get_data_type() + '/' +  each_ticker + '.pt')
 
     # here we re-initialize dataloader so the data doesn't shuffled, so we can plot the values by date
 
@@ -126,7 +126,7 @@ def predict(each_ticker):
     best_model = LSTM(input_size=config["model"]["input_size"], hidden_layer_size=config["model"]
     ["lstm_size"], num_layers=config["model"]["num_lstm_layers"], output_size=1)
     best_model.load_state_dict(torch.load(
-        file_utils.get_predictions() + '/' + each_ticker + '.pt'))
+        file_utils.get_predictions() + '/' + file_utils.get_data_type() + '/' + each_ticker + '.pt'))
 
     best_model.eval()
 

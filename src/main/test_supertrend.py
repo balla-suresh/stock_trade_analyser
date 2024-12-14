@@ -9,14 +9,9 @@ supertrend_list = [
     {
         'lookback': 20,
         'multiplier': 3
-    }
-    ,
-    {
-        'lookback': 50,
-        'multiplier': 3
     },
     {
-        'lookback': 100,
+        'lookback': 50,
         'multiplier': 3
     },
     {
@@ -62,7 +57,7 @@ for each_trend in supertrend_list:
         
         # generate CSV for stock
         # print(strategy.iloc[-1]['position'])
-        file_utils.result_csv(strategy, ticker=each_ticker)
+        # file_utils.result_csv(strategy, ticker=each_ticker)
         
         # percentage = [each_ticker,profit_percentage]
         percentages.append(profit_percentage)
@@ -73,7 +68,7 @@ for each_trend in supertrend_list:
     df[percent] = percentages
     df[signal] = signals
 
-df = df.sort_values(by=["S_50","P_50","S_100","P_100"], ascending=[False, False, False, False])
+df = df.sort_values(by=["S_20","S_50","S_200","P_20"], ascending=[False, False, False, False])
 # print(df)
 file_utils.result_csv(df, ticker='percentage')
 

@@ -8,20 +8,20 @@ import datetime
 
 supertrend_list = [
     {
-        'lookback': 10,
+        'lookback': 20,
         'multiplier': 3
     }
 ]
 config = {
     "download": {
-        "interval": "15m",
-        "period": "10d",
-        "is_download": False,
-        "data_type": "intraday"
+        "interval": "1d",
+        "period": "1y",
+        "is_download": True,
+        "data_type": "day"
     },
     "supertrend": {
         "lookback": 10,
-        "multiplier": 3,
+        "multiplier": 2,
         "intermediate": False
     }
 }
