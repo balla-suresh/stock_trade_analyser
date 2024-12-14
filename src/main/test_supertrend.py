@@ -7,20 +7,20 @@ from src.lib.tools.file_utils import FileUtils
 
 supertrend_list = [
     {
-        'lookback': 10,
+        'lookback': 20,
         'multiplier': 3
     }
     ,
     {
-        'lookback': 15,
-        'multiplier': 3
-    },
-    {
-        'lookback': 30,
-        'multiplier': 3
-    },
-    {
         'lookback': 50,
+        'multiplier': 3
+    },
+    {
+        'lookback': 100,
+        'multiplier': 3
+    },
+    {
+        'lookback': 200,
         'multiplier': 3
     }
 ]
@@ -39,11 +39,13 @@ back_test = BackTest()
 
 df = pd.DataFrame(ticker_list, columns=['symbol'])
 df = df.set_index('symbol')
+signal_list = []
 for each_trend in supertrend_list:
     logger.info(
         f"Started testing for {each_trend['lookback']} and {each_trend['multiplier']} ")
     percentages = []
     signals = []
+    signal_list.append(f"S_{each_trend['lookback']}")
     for each_ticker in ticker_list:
         # current_data = data[each_ticker]
         current_data = file_utils.import_csv(each_ticker)
@@ -71,7 +73,7 @@ for each_trend in supertrend_list:
     df[percent] = percentages
     df[signal] = signals
 
-df = df.sort_values(by=['S_10', 'S_15', 'S_30', 'S_50'], ascending=[False, False, False, False])
+df = df.sort_values(by=["S_50","P_50","S_100","P_100"], ascending=[False, False, False, False])
 # print(df)
 file_utils.result_csv(df, ticker='percentage')
 

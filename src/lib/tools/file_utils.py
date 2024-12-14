@@ -59,11 +59,27 @@ class FileUtils:
             output = self.output + '/' + self.data_type
         logger.info("Started CSV creation for all")
         if not ticker_list:
-            ticker_list = self.ticker_list
-        for ticker in ticker_list:
-            ticker_data = data[ticker].dropna()
-            self.export_csv(ticker_data, ticker, output, 'Date')
+            logger.info("Skipping CSV creation for all")
+            return ticker_list
+        new_ticker_list = ticker_list.copy()
+        if len(ticker_list) == 1:
+            ticker = ticker_list[0]
+            ticker_data = data.dropna()
+            if len(ticker_data) == 0:
+                logger.info("Skipping CSV creation for " + ticker)
+                new_ticker_list.remove(ticker)
+            else:
+                self.export_csv(ticker_data, ticker, output, 'Date')
+        else:
+            for ticker in ticker_list:
+                ticker_data = data[ticker].dropna()
+                if len(ticker_data) == 0:
+                    logger.info("Skipping CSV creation for " + ticker)
+                    new_ticker_list.remove(ticker)
+                else:
+                    self.export_csv(ticker_data, ticker, output, 'Date')
         logger.info("Finished CSV creation for all")
+        return new_ticker_list
 
     def result_csv(self, data, ticker, output: str = None, index: str = None):
         if not output:

@@ -66,7 +66,7 @@ class Downloader:
                 proxy=None,
                 ignore_tz=True
             )
-            self.file_utils.create_all_csv(new_data, new_ticker_list)
+            self.ticker_list = self.file_utils.create_all_csv(new_data, new_ticker_list)
             frames = [data, new_data]
             data = pd.concat(frames)
 
