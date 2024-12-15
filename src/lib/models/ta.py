@@ -318,3 +318,102 @@ class SupportResistance:
 
     def get_signal(self, ticker, data):
         print("nothing")
+
+class ZigZag:
+    def __init__(self, zigzag_period: int = 10, show_projection: bool = True):
+        self.zigzag_period = zigzag_period
+        self.show_projection = show_projection
+
+    def zigzag_with_projection(self, data, zigzag_period=20, show_projection=True):
+        high = data['high']
+        low = data['low']
+        bar_index = np.arange(len(data))
+
+        # Zigzag variables
+        ph = high.rolling(zigzag_period).max()
+        pl = low.rolling(zigzag_period).min()
+
+        dir = 0
+        zz_points = []
+
+        for i in range(len(data)):
+            if high[i] == ph[i]:
+                dir = 1
+                zz_points.append((bar_index[i], high[i]))
+            elif low[i] == pl[i]:
+                dir = -1
+                zz_points.append((bar_index[i], low[i]))
+
+        zz_points = np.array(zz_points)
+
+        # Projection logic
+        if show_projection and len(zz_points) >= 4:
+            last_direction = 1 if zz_points[-1, 1] > zz_points[-2, 1] else -1
+            last_length = abs(zz_points[-1, 1] - zz_points[-2, 1])
+
+            avg_bullish_length = np.mean([abs(zz_points[i, 1] - zz_points[i + 1, 1]) for i in range(0, len(zz_points) - 1, 2)])
+            avg_bearish_length = np.mean([abs(zz_points[i, 1] - zz_points[i + 1, 1]) for i in range(1, len(zz_points) - 1, 2)])
+
+            if last_direction == 1:
+                proj_length = avg_bullish_length - last_length if avg_bullish_length > last_length else 0
+            else:
+                proj_length = avg_bearish_length - last_length if avg_bearish_length > last_length else 0
+
+            if proj_length > 0:
+                start_x, start_y = zz_points[-1]
+                end_x = start_x + proj_length
+                end_y = start_y + proj_length * last_direction
+                return f"{last_direction}:{start_y}:{end_y}"
+                # plt.plot([start_x, end_x], [start_y, end_y], linestyle='dotted', color='red', label='Projection')
+
+
+class FutureTrend:
+    def __init__(self, length: int = 100, multi: int = 3, extend: int = 5, period: int = 5):
+        self.length = length
+        self.multi = multi
+        self.extend = extend
+        self.period = period
+
+    def calculate_atr(self, high, low, close):
+        high_low = high - low
+        high_close = np.abs(high - close.shift(1))
+        low_close = np.abs(low - close.shift(1))
+        ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        true_range = ranges.max(axis=1)
+        atr = true_range.rolling(window=self.period).mean()
+        return atr
+
+    def future_price(self, x1, x2, y1, y2, index):
+        slope = (y2 - y1) / (x2 - x1)
+        return y1 + slope * (index - x1)
+
+    def trend_detection(self, close, atr):
+        sma = close.rolling(window=self.length).mean()
+        upper = sma + atr
+        lower = sma - atr
+        trend = np.zeros_like(close)
+        trend[close > upper] = 1
+        trend[close < lower] = -1
+        return trend
+
+    def get_future_price(self, data):
+        atr = self.calculate_atr(data['high'], data['low'], data['close'])
+        trend = self.trend_detection(data['close'], atr)
+        global proj_price
+        close = data['close']
+        high = data['high']
+        low = data['low']
+        bar_index = np.arange(len(data))
+
+        mid = close.rolling(window=self.length).mean()
+        upper = mid + atr * self.multi
+        lower = mid - atr * self.multi
+
+        # Future projection
+        for i in range(1, len(trend)):
+            if trend[i] != trend[i - 1]:
+                x1, x2 = bar_index[i - 1], bar_index[i]
+                y1, y2 = mid[i - 1], mid[i]
+                proj_index = bar_index[-1] + self.extend
+                proj_price = self.future_price(x1, x2, y1, y2, proj_index)
+        return proj_price
