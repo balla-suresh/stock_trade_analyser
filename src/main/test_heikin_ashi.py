@@ -8,8 +8,8 @@ from src.lib.tools.file_utils import FileUtils
 
 
 logger = None
-interval = '5m'
-period = '5d'
+interval = '1D'
+period = '1y'
 is_download = True
 logger = LoggerUtils("heikin_ashi").get_logger()
 logger.info("Started testing")
@@ -29,6 +29,8 @@ percentages = []
 signals = []
 date = []
 for each_ticker in ticker_list:
+    if isinstance(each_ticker, dict):
+        each_ticker = each_ticker['symbol']
     current_data = file_utils.import_csv(each_ticker)
     current_data = current_data.dropna()
     current_data = current_data.rename(columns=str.lower)

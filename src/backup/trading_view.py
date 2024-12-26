@@ -23,7 +23,7 @@ config = {
         "multiplier": 3,
         "intermediate": True
     },
-    "helkin_ashi": {
+    "heikin_ashi": {
         "input_size": 1,  # since we are only using 1 feature, close price
         "num_lstm_layers": 3,
         "lstm_size": 64,

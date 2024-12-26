@@ -28,7 +28,7 @@ python3 -m src.main.test_supertrend
 ```
 * heikin ashi and supertrend
 ```shell
-python -m src.main.helkin_ashi_supertrend
+python -m src.main.heikin_ashi_supertrend
 ```
 * stock predictor using LSTM
 ```shell

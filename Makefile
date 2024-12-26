@@ -14,7 +14,7 @@ setup:
 	${PYTHON} -m pip install -r requirements/base.txt
 
 test:
-	python3 -m src.main.helkin_ashi_supertrend
+	python3 -m src.main.heikin_ashi_supertrend
 
 venv:
 	${PYTHON} -m pip install --upgrade pip
@@ -22,7 +22,7 @@ venv:
 	. trade/bin/activate
 
 run: setup
-	python3 -m src.main.helkin_ashi_supertrend
+	python3 -m src.main.heikin_ashi_supertrend
 
 clean:
 	rm -rf output predictions logs

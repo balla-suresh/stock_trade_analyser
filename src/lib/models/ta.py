@@ -14,16 +14,19 @@ class HeikinAshi:
     def setup(self, data):
         logger.info(f"Starting Calculated Heikin Ashi")
         df_ha = data.copy()
-        for i in range(data.shape[0]):
-            if i > 0:
-                df_ha.loc[data.index[i], 'open'] = (
-                    data['open'][i-1] + data['close'][i-1])/2
+        df_ha['old_close'] = df_ha['close']
+        df_ha['old_open'] = df_ha['open']
 
-            df_ha.loc[data.index[i], 'close'] = (
-                data['open'][i] + data['close'][i] + data['low'][i] + data['high'][i])/4
-        df_ha['old_open'] = data['open']
-        df_ha['old_close'] = data['close']
-        df_ha = df_ha.iloc[1:, :]
+        df_ha['close'] = (df_ha['old_open'] + df_ha['high'] + df_ha['low'] + df_ha['old_close']) / 4
+        # df_ha.reset_index(inplace=True)
+        ha_open = [(df_ha['old_open'][0] + df_ha['old_close'][0]) / 2]
+        [ha_open.append((ha_open[i] + df_ha['close'].values[i]) / 2) \
+         for i in range(0, len(df_ha) - 1)]
+        df_ha['open'] = ha_open
+
+        # df_ha.set_index('index', inplace=True)
+        # df_ha['ha_high'] = df_ha[['ha_open', 'ha_close', 'high']].max(axis=1)
+        # df_ha['ha_low'] = df_ha[['ha_open', 'ha_close', 'low']].min(axis=1)
         logger.info(f"Finished Calculated Heikin Ashi")
         return df_ha
 
@@ -32,68 +35,11 @@ class HeikinAshi:
         ha_signals = []
         for i in range(len(data)):
             if data['open'][i] > data['close'][i]:
-                ha_signals.append(data['low'][i])
+                ha_signals.append(0)
             else:
-                ha_signals.append(data['high'][i])
-        data['ha'] = ha_signals
-        valley = detect_peaks(data['ha'], mpd=5, valley=True)
-        peak = detect_peaks(data['ha'], mpd=5, valley=False)
+                ha_signals.append(1)
+        data['position'] = ha_signals
 
-        logger.info("Calculating HA values")
-        peaks = peak.tolist() + valley.tolist()
-        peaks.sort()
-        previous = 0
-        next = 0
-        current = 0
-        new_data = []
-        length = len(peaks)
-        for i in peaks:
-            index = peaks.index(i)
-            current = data['ha'][i]
-            if index == 0:
-                previous = current
-                next = current
-
-            if previous >= current and current <= next:
-                # print(f"first {index} {i} {previous} {current} {next} ")
-                new_data.append(current)
-            elif previous < current and current > next:
-                # print(f"second {index} {i} {previous} {current} {next} ")
-                new_data.append(current)
-            else:
-                # print(f"last {index} {i} {previous} {current} {next} ")
-                new_data.append(np.nan)
-            previous = data['ha'][i]
-
-            if index >= length-2:
-                next = data['ha'][i]
-            else:
-                next = data['ha'][peaks[index+2]]
-
-        logger.info("Calculating HA sinals")
-        # print(new_data)
-        new_final_data = []
-        for i in range(len(data)):
-            if i in peaks:
-                position = peaks.index(i)
-                value = new_data[position]
-                new_final_data.append(value)
-            elif i == len(data)-1:
-                new_final_data.append(data['ha'][i])
-            else:
-                new_final_data.append(np.nan)
-        data['ha_signal'] = new_final_data
-        data.dropna(inplace=True)
-        logger.info("Calculating HA position")
-        position = []
-        for i in range(len(data)):
-            # if i == 0:
-            #     position.append(1)
-            if not i % 2:
-                position.append(1)
-            else:
-                position.append(0)
-        data['position'] = position
         logger.info(f"Finished signals Heikin Ashi")
         return data
 

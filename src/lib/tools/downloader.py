@@ -2,6 +2,7 @@ import re
 from enum import Enum
 
 import yfinance as yf
+import os
 import time
 import logging
 import pandas as pd
@@ -29,7 +30,9 @@ class Downloader:
             self.ticker_list = self.file_utils.read_tv_ticker()
             logger.info(type(self.interval))
             if not isinstance(self.interval, Enum):
-                self.interval = Interval.in_15_minute
+                self.interval = Interval(self.interval)
+            else:
+                self.interval = self.interval
             if self.n_bars == 0:
                 self.n_bars = 1000
         else:
@@ -75,7 +78,7 @@ class Downloader:
 
     def tv_download(self):
         logger.info("In TV Download")
-        tv = TvDatafeed(username="", password="")
+        tv = TvDatafeed(username=os.environ['TV_USERNAME'], password=os.environ['TV_PASSWORD'])
         data = pd.DataFrame()
         new_data = None
         new_ticker_list = []
