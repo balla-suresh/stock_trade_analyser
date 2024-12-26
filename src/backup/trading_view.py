@@ -5,7 +5,6 @@ from src.lib.tools.file_utils import FileUtils
 from src.lib.tools.downloader import Downloader
 from tvDatafeed import TvDatafeed, Interval
 
-# tv = TvDatafeed("sureshballa", "Sunis*1234567890123")
 
 # # index
 # nifty_index_data = tv.get_hist(symbol='NIFTY',exchange='NSE',interval=Interval.in_1_hour,n_bars=1000)
