@@ -23,7 +23,7 @@ config = {
     "supertrend": {
         "lookback": 10,
         "multiplier": 2,
-        "intermediate": True
+        "intermediate": False
     }
 }
 
