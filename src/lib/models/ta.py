@@ -314,7 +314,7 @@ class ZigZag:
 
 
 class FutureTrend:
-    def __init__(self, length: int = 100, multi: int = 3, extend: int = 5, period: int = 5):
+    def __init__(self, length: int = 10, multi: int = 2, extend: int = 0, period: int = 5):
         self.length = length
         self.multi = multi
         self.extend = extend
@@ -357,9 +357,9 @@ class FutureTrend:
 
         # Future projection
         for i in range(1, len(trend)):
-            if trend[i] != trend[i - 1]:
-                x1, x2 = bar_index[i - 1], bar_index[i]
-                y1, y2 = mid[i - 1], mid[i]
-                proj_index = bar_index[-1] + self.extend
-                proj_price = self.future_price(x1, x2, y1, y2, proj_index)
+            # if trend[i] != trend[i - 1]:
+            x1, x2 = bar_index[i - 1], bar_index[i]
+            y1, y2 = mid[i - 1], mid[i]
+            proj_index = bar_index[-1] + self.extend
+            proj_price = self.future_price(x1, x2, y1, y2, proj_index)
         return proj_price

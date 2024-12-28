@@ -14,9 +14,9 @@ config = {
         "data_type": "day"
     },
     "future_trend": {
-        "length": 150,
+        "length": 100,
         "multi": 2,
-        "extend": 20,
+        "extend": 30,
         "period": 14
     }
 }
@@ -32,7 +32,10 @@ loader = Downloader(period=config["download"]["period"], interval=config["downlo
 data = loader.download()
 ticker_list = loader.get_ticker_list()
 
-future_trend = FutureTrend(config["future_trend"]["length"], config["future_trend"]["multi"],)
+future_trend = FutureTrend(config["future_trend"]["length"],
+                           config["future_trend"]["multi"],
+                           config["future_trend"]["extend"],
+                           config["future_trend"]["period"])
 back_test = BackTest()
 
 df = pd.DataFrame(ticker_list, columns=['symbol'])

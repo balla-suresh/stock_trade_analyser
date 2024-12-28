@@ -26,11 +26,17 @@ class Downloader:
         self.file_utils = file_utils
         self.n_bars = n_bars
         self.downloader = downloader
-        if downloader == "tv":
+        try:
+            username = os.environ['TV_USERNAME']
+        except KeyError:
+            username = None
+            logger.info("downloading from yahoo")
+        if username is not None:
+            self.downloader = "tv"
             self.ticker_list = self.file_utils.read_tv_ticker()
             logger.info(type(self.interval))
-            if not isinstance(self.interval, Enum):
-                self.interval = Interval(self.interval)
+            if not isinstance(self.interval.upper(), Enum):
+                self.interval = Interval(self.interval.upper())
             else:
                 self.interval = self.interval
             if self.n_bars == 0:
@@ -44,6 +50,7 @@ class Downloader:
             return self.tv_download()
         else:
             return self.yf_download()
+
 
     def yf_download(self):
         logger.info("In Download")
