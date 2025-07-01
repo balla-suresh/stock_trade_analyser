@@ -12,13 +12,13 @@ with open("requirements/base.txt") as f:
     REQUIREMENTS = f.read().splitlines()
 
 
-python_requires = ">=3.7"
+python_requires = "==3.12"
 
 setuptools.setup(
     name=NAME,
     author="suresh",
     author_email="sballa@vmware.com",
-    version=1.0,
+    version="1.0",
     description=DESC,
     install_requires=REQUIREMENTS,
     packages=setuptools.find_packages('lib')

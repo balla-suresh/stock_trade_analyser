@@ -16,17 +16,17 @@ class BackTest:
         st_strategy_ret = []
 
         for i in range(len(data_ret)):
-            returns = data_ret['returns'][i]*strategy['position'][i]
+            returns = data_ret['returns'].iloc[i]*strategy['position'].iloc[i]
             st_strategy_ret.append(returns)
             
         
         st_strategy_ret_df = pd.DataFrame(st_strategy_ret).rename(columns = {0:'st_returns'})
         investment_value = 100000
-        number_of_stocks = floor(investment_value/strategy['close'][-1])
+        number_of_stocks = floor(investment_value/strategy['close'].iloc[-1])
         st_investment_ret = []
 
         for i in range(len(st_strategy_ret_df['st_returns'])):
-            returns = number_of_stocks*st_strategy_ret_df['st_returns'][i]
+            returns = number_of_stocks*st_strategy_ret_df['st_returns'].iloc[i]
             st_investment_ret.append(returns)
 
         st_investment_ret_df = pd.DataFrame(st_investment_ret).rename(columns = {0:'investment_returns'})

@@ -40,8 +40,9 @@ class FileUtils:
             reader = csv.reader(csvfile, delimiter=',')
             name = None
             for row in reader:
-                if row and row[0]:
-                    ticker_list.append(row[0])
+                if name != row[0]:
+                    name = row[0]
+                    ticker_list.append(name)
         return ticker_list
 
     def read_tv_ticker(self):
@@ -50,11 +51,12 @@ class FileUtils:
             reader = csv.DictReader(csvfile)
             name = None
             for row in reader:
-                if row:
-                    ticker_list.append(row)
-        return ticker_list
+                ticker_list.append(row)
 
-    def create_all_csv(self, data, ticker_list: list = None, output: str = None):
+        new_ticker_list = [i for n, i in enumerate(ticker_list) if i not in ticker_list[n + 1:]]
+        return new_ticker_list
+
+    def create_all_csv(self, data, ticker_list: list | None = None, output: str | None = None):
         if not output:
             output = self.output + '/' + self.data_type
         logger.info("Started CSV creation for all")
@@ -69,7 +71,7 @@ class FileUtils:
                 logger.info("Skipping CSV creation for " + ticker)
                 new_ticker_list.remove(ticker)
             else:
-                self.export_csv(ticker_data, ticker, output, 'Date')
+                self.export_csv(ticker_data, ticker, output)
         else:
             for ticker in ticker_list:
                 ticker_data = data[ticker].dropna()
@@ -77,41 +79,38 @@ class FileUtils:
                     logger.info("Skipping CSV creation for " + ticker)
                     new_ticker_list.remove(ticker)
                 else:
-                    self.export_csv(ticker_data, ticker, output, 'Date')
+                    self.export_csv(ticker_data, ticker, output)
         logger.info("Finished CSV creation for all")
         return new_ticker_list
 
-    def result_csv(self, data, ticker, output: str = None, index: str = None):
-        if not output:
-            output = self.predictions + '/' + self.data_type
-            self.export_csv(data, ticker, output)
 
-    def export_csv(self, data, ticker, output: str = None, index: str = None):
+    def result_csv(self, data, ticker='result', sub_dir: str | None = None):
+        if sub_dir is None:
+            path = self.get_download_path(ticker)
+        else:
+            path = f"{self.output}/{sub_dir}/{ticker}.csv"
+        data.to_csv(path)
+
+    def export_csv(self, data, ticker, output: str | None = None):
         if not output:
-            output = self.output + '/' + self.data_type
-        file = output + '/' + ticker + '.csv'
+            output = self.get_download_path(ticker)
+        else:
+            output = f"{output}/{ticker}.csv"
         logger.info(f"Started exporting for {ticker}")
-        # data.dropna(inplace=True)
-        if index:
-            data.index.name = index
-        data.to_csv(file, sep=',', encoding='utf-8')
+        data.to_csv(output)
         logger.info(f"Finished exporting for {ticker}")
 
-    def import_csv(self, ticker, output: str = None, index: str = 'Date'):
-        if not output:
-            output = self.output + '/' + self.data_type
-        file = output + '/' + ticker + '.csv'
-        logger.info(f"Started importing for {ticker}")
-        data = pd.read_csv(file, index_col=index, parse_dates=True)
-        logger.info(f"Finished importing for {ticker}")
+    def import_csv(self, ticker):
+        file = self.get_download_path(ticker)
+        data = pd.read_csv(file, index_col=0, parse_dates=True)
         return data
 
     def get_new_ticker_list(self, ticker_list):
+        logger.info("In get_new_ticker_list")
         new_ticker_list = []
         for ticker in ticker_list:
             if isinstance(ticker, str):
-                # check file and import
-                file = self.output + '/' + ticker + '.csv'
+                file = self.get_download_path(ticker)
                 if os.path.exists(file):
                     logger.info(f"{ticker} already exists")
                 else:
@@ -119,7 +118,7 @@ class FileUtils:
                     new_ticker_list.append(ticker)
             else:
                 current_ticker = ticker['symbol']
-                file = self.output + '/' + current_ticker + '.csv'
+                file = self.get_download_path(current_ticker)
                 if os.path.exists(file):
                     logger.info(f"{current_ticker} already exists")
                 else:
@@ -127,11 +126,10 @@ class FileUtils:
                     new_ticker_list.append(ticker)
         return new_ticker_list
 
-    def write_json(self, data, ticker, predictions: str = None):
-        if not predictions:
-            predictions = self.predictions
-        file = predictions + '/' + ticker
-        logger.info(f"Started writing for {file}")
-        with open(file, "w") as write_file:
-            json.dump(data, write_file, indent=4)
-        logger.info(f"Finished writing for {file}")
+    def write_json(self, data, ticker):
+        path = self.get_download_path(ticker, "json")
+        with open(path, 'w') as f:
+            json.dump(data, f, indent=4)
+
+    def get_download_path(self, ticker, extension="csv"):
+        return f"{self.output}/{self.data_type}/{ticker}.{extension}"

@@ -7,7 +7,7 @@ import time
 import logging
 import pandas as pd
 from tvDatafeed import TvDatafeed, Interval
-from src.lib.tools.file_utils import FileUtils
+from stock_trade_analyser.tools.file_utils import FileUtils
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,7 @@ class Downloader:
 
     def yf_download(self):
         logger.info("In Download")
+        assert isinstance(self.interval, str)
         data = pd.DataFrame()
         new_data = None
         new_ticker_list = []
@@ -85,6 +86,7 @@ class Downloader:
 
     def tv_download(self):
         logger.info("In TV Download")
+        assert isinstance(self.interval, Interval)
         tv = TvDatafeed(username=os.environ['TV_USERNAME'], password=os.environ['TV_PASSWORD'])
         data = pd.DataFrame()
         new_data = None

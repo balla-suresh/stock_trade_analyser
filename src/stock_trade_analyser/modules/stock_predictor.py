@@ -1,3 +1,6 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 import torch
 import pandas as pd
 import torch.optim as optim
@@ -9,48 +12,19 @@ from torch.utils.data import DataLoader
 import operator
 from datetime import timedelta
 
-from src.lib.tools.data_utils import *
-from src.lib.models.model import *
-from src.lib.tools.log_utils import LoggerUtils
-from src.lib.tools.downloader import Downloader
-from src.lib.tools.file_utils import FileUtils
+from stock_trade_analyser.tools.data_utils import *
+from stock_trade_analyser.models.model import *
+from stock_trade_analyser.tools.log_utils import LoggerUtils
+from stock_trade_analyser.tools.downloader import Downloader
+from stock_trade_analyser.tools.file_utils import FileUtils
 
 import matplotlib.pyplot as plt
 import multiprocessing
 
 import json
 
-config = {
-    "download": {
-        "interval": "1d",
-        "period": "1y",
-        "is_download": True
-    },
-    "data": {
-        "window_size": 20,
-        "train_split_size": 0.80,
-    },
-    "model": {
-        "input_size": 1,  # since we are only using 1 feature, close price
-        "num_lstm_layers": 3,
-        "lstm_size": 64,
-        "dropout": 0.2,
-    },
-    "training": {
-        "device": "cpu",  # "cuda" or "cpu"
-        "batch_size": 64,
-        "num_epoch": 100,
-        "learning_rate": 0.01,
-        "scheduler_step_size": 40,
-    }
-}
-
-logger = None
-file_utils = None
-logger = LoggerUtils("stock_predictor").get_logger()
-file_utils = FileUtils()
-loader = Downloader(period=config["download"]["period"], interval=config["download"].get("interval"),
-                    is_download=config["download"]["is_download"], file_utils=file_utils)
+with open(os.path.join(os.path.dirname(__file__), '..', 'config', 'day.json'), 'r') as f:
+    config = json.load(f)
 
 # normalize
 scaler = Normalizer()
@@ -62,6 +36,8 @@ model = model.to(config["training"]["device"])
 
 
 def predict(each_ticker):
+    logger = LoggerUtils("stock_predictor").get_logger()
+    file_utils = FileUtils(data_type=config["download"]["data_type"])
     # each_ticker = ticker_list[0]
     current_data = file_utils.import_csv(each_ticker)
     current_data = current_data.dropna()
@@ -98,7 +74,7 @@ def predict(each_ticker):
 
     # begin training
     if config["download"]["is_download"]:
-        min_loss = np.Inf
+        min_loss = np.inf
         for epoch in range(config["training"]["num_epoch"]):
             loss_train, lr_train = run_epoch(
                 model, optimizer, criterion, scheduler, config, train_dataloader, is_training=True)
@@ -176,16 +152,21 @@ def predict(each_ticker):
 
 
 if __name__ == '__main__':
+    logger = LoggerUtils("stock_predictor").get_logger()
+    file_utils = FileUtils(data_type=config["download"]["data_type"])
     logger.info("Started Predicting")
     file_utils.clean()
+    loader = Downloader(period=config["download"]["period"], interval=config["download"].get("interval", "1d"),
+                    is_download=config["download"]["is_download"], file_utils=file_utils)
+
     data = loader.download()
     ticker_list = loader.get_ticker_list()
 
     # df = pd.DataFrame(ticker_list, columns=['symbol'])
     # df = df.set_index('symbol')
-    pool = multiprocessing.Pool()
-    outputs_async = pool.map_async(predict, ticker_list)
-    outputs = outputs_async.get()
+    with multiprocessing.Pool() as pool:
+        outputs_async = pool.map_async(predict, ticker_list)
+        outputs = outputs_async.get()
     # logger.info("Output: {}".format(outputs))
     # logger.info(json.dumps(outputs, indent = 3))
     file_utils.write_json(outputs, "final.json")

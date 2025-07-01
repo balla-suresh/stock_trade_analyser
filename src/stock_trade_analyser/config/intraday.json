@@ -1,0 +1,30 @@
+{
+    "download": {
+        "interval": "1m",
+        "period": "5d",
+        "is_download": "True",
+        "data_type": "intraday"
+    },
+    "supertrend": {
+        "lookback": 10,
+        "multiplier": 2,
+        "intermediate": "False"
+    },
+    "data": {
+        "window_size": 20,
+        "train_split_size": 0.80
+    },
+    "model": {
+        "input_size": 1,
+        "num_lstm_layers": 3,
+        "lstm_size": 64,
+        "dropout": 0.2
+    },
+    "training": {
+        "device": "cpu",
+        "batch_size": 64,
+        "num_epoch": 100,
+        "learning_rate": 0.01,
+        "scheduler_step_size": 40
+    }
+}

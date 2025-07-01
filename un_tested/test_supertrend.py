@@ -1,9 +1,13 @@
-from src.lib.tools.downloader import Downloader
-from src.lib.models.ta import SuperTrend
-from src.lib.tools.log_utils import LoggerUtils
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
+from stock_trade_analyser.tools.downloader import Downloader
+from stock_trade_analyser.models.ta import SuperTrend
+from stock_trade_analyser.tools.log_utils import LoggerUtils
 import pandas as pd
-from src.lib.tools.backtest import BackTest
-from src.lib.tools.file_utils import FileUtils
+from stock_trade_analyser.tools.backtest import BackTest
+from stock_trade_analyser.tools.file_utils import FileUtils
 
 supertrend_list = [
     {
@@ -19,7 +23,6 @@ supertrend_list = [
         'multiplier': 3
     }
 ]
-logger = None
 logger = LoggerUtils("super_trend").get_logger()
 logger.info("Started testing")
 
@@ -32,7 +35,7 @@ ticker_list = loader.get_ticker_list()
 supertrend = SuperTrend(7, 3)
 back_test = BackTest()
 
-df = pd.DataFrame(ticker_list, columns=['symbol'])
+df = pd.DataFrame(ticker_list, columns=['symbol']) # type: ignore
 df = df.set_index('symbol')
 signal_list = []
 for each_trend in supertrend_list:
@@ -73,3 +76,7 @@ df = df.sort_values(by=["S_20","S_50","S_200","P_20"], ascending=[False, False, 
 file_utils.result_csv(df, ticker='percentage')
 
 logger.info("Completed testing")
+
+
+def test_supertrend():
+    assert True

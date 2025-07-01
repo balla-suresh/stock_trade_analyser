@@ -75,7 +75,7 @@ class SuperTrend:
 
         # FINAL UPPER BAND
 
-        final_bands = pd.DataFrame(columns=['upper', 'lower'])
+        final_bands = pd.DataFrame(columns=['upper', 'lower'])  # type: ignore
         final_bands.iloc[:, 0] = [x for x in upper_band - upper_band]
         final_bands.iloc[:, 1] = final_bands.iloc[:, 0]
 
@@ -83,8 +83,8 @@ class SuperTrend:
             if i == 0:
                 final_bands.iloc[i, 0] = 0
             else:
-                if (upper_band[i] < final_bands.iloc[i-1, 0]) | (close[i-1] > final_bands.iloc[i-1, 0]):
-                    final_bands.iloc[i, 0] = upper_band[i]
+                if (upper_band.iloc[i] < final_bands.iloc[i-1, 0]) | (close.iloc[i-1] > final_bands.iloc[i-1, 0]):
+                    final_bands.iloc[i, 0] = upper_band.iloc[i]
                 else:
                     final_bands.iloc[i, 0] = final_bands.iloc[i-1, 0]
 
@@ -94,26 +94,26 @@ class SuperTrend:
             if i == 0:
                 final_bands.iloc[i, 1] = 0
             else:
-                if (lower_band[i] > final_bands.iloc[i-1, 1]) | (close[i-1] < final_bands.iloc[i-1, 1]):
-                    final_bands.iloc[i, 1] = lower_band[i]
+                if (lower_band.iloc[i] > final_bands.iloc[i-1, 1]) | (close.iloc[i-1] < final_bands.iloc[i-1, 1]):
+                    final_bands.iloc[i, 1] = lower_band.iloc[i]
                 else:
                     final_bands.iloc[i, 1] = final_bands.iloc[i-1, 1]
 
         # SUPERTREND
-        supertrend = pd.DataFrame(columns=[f'supertrend_{self.lookback}'])
+        supertrend = pd.DataFrame(columns=[f'supertrend_{self.lookback}'])  # type: ignore
         supertrend.iloc[:, 0] = [
             x for x in final_bands['upper'] - final_bands['upper']]
 
         for i in range(len(supertrend)):
             if i == 0:
                 supertrend.iloc[i, 0] = 0
-            elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 0] and close[i] < final_bands.iloc[i, 0]:
+            elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 0] and close.iloc[i] < final_bands.iloc[i, 0]:
                 supertrend.iloc[i, 0] = final_bands.iloc[i, 0]
-            elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 0] and close[i] > final_bands.iloc[i, 0]:
+            elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 0] and close.iloc[i] > final_bands.iloc[i, 0]:
                 supertrend.iloc[i, 0] = final_bands.iloc[i, 1]
-            elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 1] and close[i] > final_bands.iloc[i, 1]:
+            elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 1] and close.iloc[i] > final_bands.iloc[i, 1]:
                 supertrend.iloc[i, 0] = final_bands.iloc[i, 1]
-            elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 1] and close[i] < final_bands.iloc[i, 1]:
+            elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 1] and close.iloc[i] < final_bands.iloc[i, 1]:
                 supertrend.iloc[i, 0] = final_bands.iloc[i, 0]
 
         supertrend = supertrend.set_index(upper_band.index)
@@ -126,10 +126,10 @@ class SuperTrend:
         close = close.iloc[len(close) - len(supertrend):]
 
         for i in range(len(supertrend)):
-            if close[i] > supertrend.iloc[i, 0]:
+            if close.iloc[i] > supertrend.iloc[i, 0]:
                 upt.append(supertrend.iloc[i, 0])
                 dt.append(np.nan)
-            elif close[i] < supertrend.iloc[i, 0]:
+            elif close.iloc[i] < supertrend.iloc[i, 0]:
                 upt.append(np.nan)
                 dt.append(supertrend.iloc[i, 0])
             else:
@@ -155,9 +155,9 @@ class SuperTrend:
         signal = 0
 
         for i in range(len(st)):
-            if st[i-1] > prices[i-1] and st[i] < prices[i]:
+            if st.iloc[i-1] > prices.iloc[i-1] and st.iloc[i] < prices.iloc[i]:
                 if signal != 1:
-                    buy_price.append(prices[i])
+                    buy_price.append(prices.iloc[i])
                     sell_price.append(np.nan)
                     signal = 1
                     st_signal.append(signal)
@@ -165,10 +165,10 @@ class SuperTrend:
                     buy_price.append(np.nan)
                     sell_price.append(np.nan)
                     st_signal.append(0)
-            elif st[i-1] < prices[i-1] and st[i] > prices[i]:
+            elif st.iloc[i-1] < prices.iloc[i-1] and st.iloc[i] > prices.iloc[i]:
                 if signal != -1:
                     buy_price.append(np.nan)
-                    sell_price.append(prices[i])
+                    sell_price.append(prices.iloc[i])
                     signal = -1
                     st_signal.append(signal)
                 else:
@@ -206,9 +206,9 @@ class SuperTrend:
         close_price = data['close']
         st = data['st']
         self.st_signal = pd.DataFrame(self.st_signal).rename(
-            columns={0: 'st_signal'}).set_index(data.index)
+            columns={0: 'st_signal'}).set_index(data.index)  # type: ignore
         position = pd.DataFrame(position).rename(
-            columns={0: 'position'}).set_index(data.index)
+            columns={0: 'position'}).set_index(data.index)  # type: ignore
 
         # frames = [close_price, st, data['s_upt'], data['st_dt'], data['upper'], data['lower'],
         #           self.st_signal, position]
@@ -231,7 +231,7 @@ class SupportResistance:
         size = min(11, len(df.index))
         for i in range(1, size):
             kmeans = KMeans(n_clusters=i, init='k-means++',
-                            max_iter=300, n_init=10, random_state=0)
+                            max_iter=300, n_init=10, random_state=0)  # type: ignore
             kmeans.fit(df)
             wcss.append(kmeans.inertia_)
             k_models.append(kmeans)

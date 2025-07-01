@@ -11,12 +11,15 @@ from torch.utils.data import DataLoader
 
 import operator
 from datetime import timedelta
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-from src.lib.tools.data_utils import *
-from src.lib.models.model import *
-from src.lib.tools.log_utils import LoggerUtils
-from src.lib.tools.downloader import Downloader
-from src.lib.tools.file_utils import FileUtils
+from stock_trade_analyser.tools.data_utils import *
+from stock_trade_analyser.models.model import *
+from stock_trade_analyser.tools.log_utils import LoggerUtils
+from stock_trade_analyser.tools.downloader import Downloader
+from stock_trade_analyser.tools.file_utils import FileUtils
 
 import multiprocessing
 
@@ -47,11 +50,9 @@ config = {
     }
 }
 
-logger = None
-file_utils = None
 logger = LoggerUtils("stock_predictor").get_logger()
 file_utils = FileUtils()
-loader = Downloader(period=config["download"]["period"], interval=config["download"].get("interval"),
+loader = Downloader(period=config["download"]["period"], interval=config["download"].get("interval", "1d"),
                     is_download=config["download"]["is_download"], file_utils=file_utils)
 
 # normalize
@@ -242,3 +243,9 @@ if __name__ == '__main__':
     # logger.info(json.dumps(outputs, indent = 3))
     file_utils.write_json(outputs, "final.json")
     logger.info("Finished Predicting")
+
+
+def test_predict():
+    loader.ticker_list = ['AAPL']
+    loader.download()
+    predict('AAPL')

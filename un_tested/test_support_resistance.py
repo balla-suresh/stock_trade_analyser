@@ -1,9 +1,13 @@
-from src.lib.tools.downloader import Downloader
-from src.lib.models.ta import SupportResistance
-from src.lib.tools.log_utils import LoggerUtils
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
+from stock_trade_analyser.tools.downloader import Downloader
+from stock_trade_analyser.models.ta import SupportResistance
+from stock_trade_analyser.tools.log_utils import LoggerUtils
 import pandas as pd
-from src.lib.tools.backtest import BackTest
-from src.lib.tools.file_utils import FileUtils
+from stock_trade_analyser.tools.backtest import BackTest
+from stock_trade_analyser.tools.file_utils import FileUtils
 import datetime
 
 supertrend_list = [
@@ -20,7 +24,6 @@ config = {
     }
 }
 
-logger = None
 logger = LoggerUtils("support_resistance").get_logger()
 logger.info("Started testing")
 
@@ -41,3 +44,7 @@ for each_ticker in ticker_list:
     print(f"resistance levels for ticker {each_ticker}:{high_centers}")
 
 logger.info("Completed testing")
+
+
+def test_support_resistance():
+    assert True

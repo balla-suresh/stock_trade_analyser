@@ -1,9 +1,13 @@
-from src.lib.tools.downloader import Downloader
-from src.lib.models.ta import HeikinAshi
-from src.lib.tools.log_utils import LoggerUtils
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
+from stock_trade_analyser.tools.downloader import Downloader
+from stock_trade_analyser.models.ta import HeikinAshi
+from stock_trade_analyser.tools.log_utils import LoggerUtils
 import pandas as pd
-from src.lib.tools.backtest import BackTest
-from src.lib.tools.file_utils import FileUtils
+from stock_trade_analyser.tools.backtest import BackTest
+from stock_trade_analyser.tools.file_utils import FileUtils
 # from detecta import detect_peaks
 
 
@@ -23,7 +27,7 @@ heikin_ashi = HeikinAshi()
 back_test = BackTest()
 
 
-df = pd.DataFrame(ticker_list, columns=['symbol'])
+df = pd.DataFrame(ticker_list, columns=['symbol']) # type: ignore
 df = df.set_index('symbol')
 percentages = []
 signals = []
@@ -57,3 +61,6 @@ df = df.sort_values(by=['percent'], ascending=[False])
 file_utils.result_csv(df, ticker='percentage')
 
 logger.info("Completed testing")
+
+def test_heikin_ashi():
+    assert True

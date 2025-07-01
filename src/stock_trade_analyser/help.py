@@ -1,8 +1,11 @@
+import sys
+import os
+sys.path.append(os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')), 'src'))
 import pandas as pd
 import pandas_ta as ta
-from src.lib.tools.log_utils import LoggerUtils
-from src.lib.tools.file_utils import FileUtils
-from src.lib.tools.downloader import Downloader
+from stock_trade_analyser.tools.log_utils import LoggerUtils
+from stock_trade_analyser.tools.file_utils import FileUtils
+from stock_trade_analyser.tools.downloader import Downloader
 
 config = {
     "download": {
