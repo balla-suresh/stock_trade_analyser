@@ -88,7 +88,7 @@ class FileUtils:
         if sub_dir is None:
             path = self.get_download_path(ticker)
         else:
-            path = f"{self.output}/{sub_dir}/{ticker}.csv"
+            path = f"{self.predictions}/{sub_dir}/{ticker}.csv"
         data.to_csv(path)
 
     def export_csv(self, data, ticker, output: str | None = None):
@@ -123,6 +123,15 @@ class FileUtils:
                     logger.info(f"{current_ticker} already exists")
                 else:
                     logger.info(f"{current_ticker} does not exists")
+                    new_ticker_list.append(ticker)
+        return new_ticker_list
+
+    def current_ticker_list(self, ticker_list):
+        new_ticker_list = []
+        for ticker in ticker_list:
+            if isinstance(ticker, str):
+                file = self.get_download_path(ticker)
+                if os.path.exists(file):
                     new_ticker_list.append(ticker)
         return new_ticker_list
 

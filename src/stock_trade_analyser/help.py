@@ -71,4 +71,4 @@ for each_ticker in ticker_list:
     print(new_data.tail())
     
     if config["supertrend"]["intermediate"]:
-        file_utils.result_csv(new_data, ticker=each_ticker)
+        file_utils.result_csv(new_data, sub_dir=file_utils.get_data_type(), ticker=each_ticker)

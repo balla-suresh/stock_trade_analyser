@@ -19,7 +19,7 @@ class HeikinAshi:
 
         df_ha['close'] = (df_ha['old_open'] + df_ha['high'] + df_ha['low'] + df_ha['old_close']) / 4
         # df_ha.reset_index(inplace=True)
-        ha_open = [(df_ha['old_open'][0] + df_ha['old_close'][0]) / 2]
+        ha_open = [(df_ha['old_open'].iloc[0] + df_ha['old_close'].iloc[0]) / 2]
         [ha_open.append((ha_open[i] + df_ha['close'].values[i]) / 2) \
          for i in range(0, len(df_ha) - 1)]
         df_ha['open'] = ha_open
@@ -34,7 +34,7 @@ class HeikinAshi:
         logger.info(f"Starting signals Heikin Ashi")
         ha_signals = []
         for i in range(len(data)):
-            if data['open'][i] > data['close'][i]:
+            if data['open'].iloc[i] > data['close'].iloc[i]:
                 ha_signals.append(0)
             else:
                 ha_signals.append(1)
@@ -75,7 +75,7 @@ class SuperTrend:
 
         # FINAL UPPER BAND
 
-        final_bands = pd.DataFrame(columns=['upper', 'lower'])  # type: ignore
+        final_bands = pd.DataFrame(index=upper_band.index, columns=['upper', 'lower'])  # type: ignore
         final_bands.iloc[:, 0] = [x for x in upper_band - upper_band]
         final_bands.iloc[:, 1] = final_bands.iloc[:, 0]
 
@@ -100,7 +100,7 @@ class SuperTrend:
                     final_bands.iloc[i, 1] = final_bands.iloc[i-1, 1]
 
         # SUPERTREND
-        supertrend = pd.DataFrame(columns=[f'supertrend_{self.lookback}'])  # type: ignore
+        supertrend = pd.DataFrame(index=final_bands.index, columns=[f'supertrend_{self.lookback}'])  # type: ignore
         supertrend.iloc[:, 0] = [
             x for x in final_bands['upper'] - final_bands['upper']]
 
@@ -140,8 +140,6 @@ class SuperTrend:
             supertrend.iloc[:, 0]), pd.Series(upt), pd.Series(dt), pd.Series(final_bands['upper']), pd.Series(final_bands['lower'])
         upper = upper.iloc[1:]
         lower = lower.iloc[1:]
-        new_row = pd.DataFrame()
-        pd.concat([new_row,upper.loc[:]]).reset_index(drop=True) 
         
         upt.index, dt.index, upper.index, lower.index = supertrend.index, supertrend.index, supertrend.index, supertrend.index
         logger.info(f"Finished calculation of Supertrend for {ticker}")

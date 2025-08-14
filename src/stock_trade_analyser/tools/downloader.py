@@ -67,7 +67,7 @@ class Downloader:
         if new_ticker_list:
             logger.info("Started Downloading")
             new_data = yf.download(
-                tickers=self.ticker_list,
+                tickers=new_ticker_list,
                 period=self.period,
                 interval=self.interval,
                 group_by='ticker',
@@ -77,7 +77,8 @@ class Downloader:
                 proxy=None,
                 ignore_tz=True
             )
-            self.ticker_list = self.file_utils.create_all_csv(new_data, new_ticker_list)
+            self.file_utils.create_all_csv(new_data, new_ticker_list)
+            self.ticker_list = self.file_utils.current_ticker_list(self.ticker_list)
             frames = [data, new_data]
             data = pd.concat(frames)
 

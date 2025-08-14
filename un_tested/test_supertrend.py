@@ -73,7 +73,7 @@ for each_trend in supertrend_list:
 
 df = df.sort_values(by=["S_20","S_50","S_200","P_20"], ascending=[False, False, False, False])
 # print(df)
-file_utils.result_csv(df, ticker='percentage')
+file_utils.result_csv(df, sub_dir=file_utils.get_data_type(), ticker='percentage')
 
 logger.info("Completed testing")
 

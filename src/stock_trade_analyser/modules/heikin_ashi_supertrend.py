@@ -64,7 +64,7 @@ if ticker_list is not None:
         # generate CSV for stock
         # print(strategy.iloc[-1]['position'])
         if config["supertrend"]["intermediate"]:
-            file_utils.result_csv(strategy, ticker=each_ticker)
+            file_utils.result_csv(strategy, sub_dir=file_utils.get_data_type(), ticker=each_ticker)
         diff = None
         if strategy.iloc[-1]['position']:
             diff = strategy.iloc[-1]['close'] - strategy.iloc[-1]['st']
@@ -96,8 +96,8 @@ df['st'] = st
 
 df = df.sort_values(by=['trade', 'diff'], ascending=[False, True])
 
-file_utils.result_csv(df[df['trade'] == 1], ticker='supertrend_buy')
-file_utils.result_csv(df[df['trade'] == -1], ticker='supertrend_sell')
-file_utils.result_csv(df[df['trade'] == 0], ticker='supertrend_wait')
+file_utils.result_csv(df[df['trade'] == 1], sub_dir=file_utils.get_data_type(), ticker='supertrend_buy')
+file_utils.result_csv(df[df['trade'] == -1], sub_dir=file_utils.get_data_type(), ticker='supertrend_sell')
+file_utils.result_csv(df[df['trade'] == 0], sub_dir=file_utils.get_data_type(), ticker='supertrend_wait')
 
 logger.info("Completed super_trend")

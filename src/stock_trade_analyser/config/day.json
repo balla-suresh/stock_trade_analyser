@@ -2,13 +2,13 @@
     "download": {
         "interval": "1d",
         "period": "1y",
-        "is_download": "True",
+        "is_download": true,
         "data_type": "day"
     },
     "supertrend": {
         "lookback": 10,
         "multiplier": 2,
-        "intermediate": "False"
+        "intermediate": false
     },
     "data": {
         "window_size": 20,

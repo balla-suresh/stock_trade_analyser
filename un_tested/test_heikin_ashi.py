@@ -44,7 +44,7 @@ for each_ticker in ticker_list:
 
     # generate CSV for stock
     ha_data.dropna(inplace=True)
-    file_utils.result_csv(ha_data, ticker=each_ticker)
+    file_utils.result_csv(ha_data, sub_dir=file_utils.get_data_type(), ticker=each_ticker)
 
     profit_percentage = back_test.back_test(
         ticker=each_ticker, strategy=ha_data)
@@ -58,7 +58,7 @@ df['signal'] = signals
 df['date'] = date
 df = df.sort_values(by=['percent'], ascending=[False])
 # print(df)
-file_utils.result_csv(df, ticker='percentage')
+file_utils.result_csv(df, sub_dir=file_utils.get_data_type(), ticker='percentage')
 
 logger.info("Completed testing")
 
