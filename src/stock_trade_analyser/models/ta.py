@@ -402,7 +402,107 @@ class FibonacciBollingerBands:
             else:
                 return 0.45
 
-    def predict_fbb_touch_and_reversal(self, df, lookback_period=15, max_days_ahead=60):
+    def _calculate_dynamic_direction(self, df, current_idx, current_price, fbb_levels):
+        """
+        Calculate direction dynamically using multiple timeframes and recent price action.
+        
+        Returns:
+        --------
+        tuple: (direction, velocity, optimal_lookback)
+        """
+        min_lookback = 3
+        max_lookback = min(30, len(df) - 1)
+        
+        # Check for recent band touches and reversals (last 5-10 days)
+        recent_reversal_detected = False
+        recent_touch_direction = None
+        
+        # Look back up to 10 days for recent band touches
+        lookback_recent = min(10, current_idx)
+        for i in range(max(1, current_idx - lookback_recent), current_idx):
+            close = df['close'].iloc[i]
+            prev_close = df['close'].iloc[i-1]
+            
+            # Get historical FBB levels for that period
+            if 'fbb_up6' in df.columns and 'fbb_low6' in df.columns:
+                up6_hist = df['fbb_up6'].iloc[i]
+                low6_hist = df['fbb_low6'].iloc[i]
+                
+                if not pd.isna(up6_hist) and not pd.isna(low6_hist):
+                    # Check if price touched upper band and reversed
+                    if prev_close >= up6_hist and close < up6_hist:
+                        # Touched upper band and reversed down
+                        recent_reversal_detected = True
+                        recent_touch_direction = 'down'
+                        break
+                    
+                    # Check if price touched lower band and reversed
+                    if prev_close <= low6_hist and close > low6_hist:
+                        # Touched lower band and reversed up
+                        recent_reversal_detected = True
+                        recent_touch_direction = 'up'
+                        break
+        
+        # Calculate momentum using multiple timeframes with weights
+        velocities = []
+        weights = []
+        lookbacks = [3, 5, 7, 10, 15, 20]  # Multiple timeframes
+        
+        for lookback in lookbacks:
+            if current_idx < lookback:
+                continue
+                
+            recent_prices = df['close'].iloc[-lookback:].values
+            if len(recent_prices) < 2:
+                continue
+            
+            # Use linear regression for velocity
+            recent_dates = np.arange(len(recent_prices))
+            slope = np.polyfit(recent_dates, recent_prices, 1)[0]
+            velocities.append(slope)
+            
+            # Weight: more weight on shorter timeframes (recent momentum is more important)
+            weight = 1.0 / lookback
+            weights.append(weight)
+        
+        if not velocities:
+            # Fallback: use simple 3-day momentum
+            if current_idx >= 3:
+                recent_prices = df['close'].iloc[-3:].values
+                velocity = np.mean(np.diff(recent_prices))
+            else:
+                velocity = 0
+            return ('up' if velocity > 0 else 'down', velocity, 3)
+        
+        # Weighted average velocity
+        weights = np.array(weights)
+        weights = weights / weights.sum()  # Normalize
+        velocity = np.average(velocities, weights=weights)
+        
+        # Determine direction
+        direction = 'up' if velocity > 0 else 'down'
+        
+        # If recent reversal detected, adjust direction
+        if recent_reversal_detected:
+            # Recent reversal takes precedence if it's strong
+            # Check if the reversal momentum is stronger than overall trend
+            reversal_lookback = min(5, current_idx)
+            if reversal_lookback >= 2:
+                reversal_prices = df['close'].iloc[-reversal_lookback:].values
+                reversal_dates = np.arange(len(reversal_prices))
+                reversal_velocity = np.polyfit(reversal_dates, reversal_prices, 1)[0]
+                
+                # If reversal momentum is significant (at least 50% of overall velocity)
+                if abs(reversal_velocity) > abs(velocity) * 0.5:
+                    direction = recent_touch_direction
+                    velocity = reversal_velocity
+        
+        # Use optimal lookback based on which timeframe has strongest momentum
+        optimal_lookback = lookbacks[np.argmax(np.abs(velocities))]
+        
+        return direction, velocity, optimal_lookback
+
+    def predict_fbb_touch_and_reversal(self, df, lookback_period=None, max_days_ahead=60):
         """
         Predict which Fibonacci Bollinger Band level the price will touch and when,
         before it reverses.
@@ -411,8 +511,8 @@ class FibonacciBollingerBands:
         -----------
         df : pd.DataFrame
             DataFrame with OHLC data and FBB columns (lowercase column names)
-        lookback_period : int
-            Number of days to look back for velocity calculation
+        lookback_period : int, optional
+            Number of days to look back for velocity calculation (if None, calculated dynamically)
         max_days_ahead : int
             Maximum number of days to project forward
         
@@ -427,7 +527,7 @@ class FibonacciBollingerBands:
             - direction: 'up' or 'down'
             - reversal_probability: Probability of reversal after touch (0-1)
         """
-        if len(df) < lookback_period:
+        if len(df) < 3:
             return None
         
         # Get current values
@@ -452,25 +552,14 @@ class FibonacciBollingerBands:
                 if not pd.isna(value):
                     fbb_levels[level] = value
         
-        # Calculate price velocity (momentum)
-        recent_prices = df['close'].iloc[-lookback_period:].values
-        recent_dates = np.arange(len(recent_prices))
+        # Calculate direction dynamically
+        direction, velocity, optimal_lookback = self._calculate_dynamic_direction(
+            df, current_idx, current_price, fbb_levels
+        )
         
-        # Linear regression to get velocity (price change per day)
-        if len(recent_prices) > 1:
-            # Calculate average daily change
-            price_changes = np.diff(recent_prices)
-            velocity = np.mean(price_changes)  # Average price change per day
-            
-            # Alternative: Use linear regression for more accurate velocity
-            if len(recent_prices) >= 2:
-                slope = np.polyfit(recent_dates, recent_prices, 1)[0]
-                velocity = slope
-        else:
-            velocity = 0
-        
-        # Determine direction
-        direction = 'up' if velocity > 0 else 'down'
+        # Use optimal lookback for velocity calculation if not provided
+        if lookback_period is None:
+            lookback_period = optimal_lookback
         
         # Find which level will be touched first
         target_level = None
@@ -536,7 +625,7 @@ class FibonacciBollingerBands:
             'all_levels': fbb_levels
         }
 
-    def get_signal(self, ticker, data, lookback_period=15, max_days_ahead=60):
+    def get_signal(self, ticker, data, lookback_period=None, max_days_ahead=60):
         """
         Get trading signals based on Fibonacci Bollinger Bands with predictions
         
@@ -546,15 +635,16 @@ class FibonacciBollingerBands:
             Ticker symbol
         data : pd.DataFrame
             DataFrame with FBB columns (from setup method)
-        lookback_period : int
-            Number of days to look back for velocity calculation in prediction
+        lookback_period : int, optional
+            Number of days to look back for velocity calculation in prediction.
+            If None, calculated dynamically based on recent price action.
         max_days_ahead : int
             Maximum number of days to project forward in prediction
         
         Returns:
         --------
         pd.DataFrame with signal columns added:
-            - fbb_signal: Trading signal (0: no signal, 1: buy, -1: sell)
+            - fbb_signal: Trading signal (0: no signal, 0.5: partial buy, 1: full buy, -0.5: partial sell, -1: full sell)
             - target_price: Predicted price level to be touched
             - days_to_touch: Number of days until target level is touched
             - reversal_probability: Probability of reversal after touch
@@ -568,23 +658,53 @@ class FibonacciBollingerBands:
         prediction = self.predict_fbb_touch_and_reversal(df, lookback_period, max_days_ahead)
         
         # Initialize signal columns
-        df['fbb_signal'] = 0  # 0: no signal, 1: buy, -1: sell
+        # Signal values: 0: no signal, 0.5: partial buy (fbb_low5), 1: full buy, -0.5: partial sell (fbb_up6), -1: full sell
+        df['fbb_signal'] = 0.0  # Initialize as float to support 0.5 and -0.5 values
         df['target_price'] = None
         df['days_to_touch'] = None
         df['reversal_probability'] = None
         df['direction'] = None
         
-        # Simple signal logic: buy when price touches lower bands, sell when touches upper bands
+        # Signal logic: 
+        # - Full buy (1.0) when price touches or crosses fbb_low6 (extreme lower band)
+        # - Partial buy (0.5) when price touches or crosses fbb_low5 (but not fbb_low6)
+        # - Partial sell (-0.5) when price touches or crosses fbb_up6
+        # Priority: Full buy > Partial buy, so check fbb_low6 first
         for i in range(1, len(df)):
             close = df['close'].iloc[i]
             prev_close = df['close'].iloc[i-1]
             
-            # Check if price touched or crossed lower bands (buy signal)
-            if close <= df['fbb_low6'].iloc[i] or (prev_close > df['fbb_low6'].iloc[i-1] and close <= df['fbb_low6'].iloc[i]):
-                df.loc[df.index[i], 'fbb_signal'] = 1
-            # Check if price touched or crossed upper bands (sell signal)
-            elif close >= df['fbb_up6'].iloc[i] or (prev_close < df['fbb_up6'].iloc[i-1] and close >= df['fbb_up6'].iloc[i]):
-                df.loc[df.index[i], 'fbb_signal'] = -1
+            # Check if price touched or crossed fbb_low6 (full buy signal - highest priority)
+            if 'fbb_low6' in df.columns:
+                low6 = df['fbb_low6'].iloc[i]
+                low6_prev = df['fbb_low6'].iloc[i-1] if i > 0 else low6
+                if not pd.isna(low6):
+                    # Price is at or below fbb_low6, or crossed from above
+                    if close <= low6 or (prev_close > low6_prev and close <= low6):
+                        df.loc[df.index[i], 'fbb_signal'] = 1.0  # Full buy
+                        continue  # Skip other checks if full buy signal
+            
+            # Check if price touched or crossed fbb_low5 (partial buy signal)
+            # Only set if not already a full buy
+            if 'fbb_low5' in df.columns:
+                low5 = df['fbb_low5'].iloc[i]
+                low5_prev = df['fbb_low5'].iloc[i-1] if i > 0 else low5
+                if not pd.isna(low5):
+                    # Price is at or below fbb_low5, or crossed from above
+                    if close <= low5 or (prev_close > low5_prev and close <= low5):
+                        # Only set partial buy if not already a full buy
+                        if df.loc[df.index[i], 'fbb_signal'] == 0.0:
+                            df.loc[df.index[i], 'fbb_signal'] = 0.5  # Partial buy
+            
+            # Check if price touched or crossed fbb_up6 (partial sell signal)
+            # This check is independent - price can't be at both levels simultaneously
+            if 'fbb_up6' in df.columns:
+                up6 = df['fbb_up6'].iloc[i]
+                up6_prev = df['fbb_up6'].iloc[i-1] if i > 0 else up6
+                if not pd.isna(up6):
+                    # Price is at or above fbb_up6, or crossed from below
+                    if close >= up6 or (prev_close < up6_prev and close >= up6):
+                        df.loc[df.index[i], 'fbb_signal'] = -0.5  # Partial sell
         
         # Add prediction data to the last row
         if prediction:

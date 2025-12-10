@@ -61,10 +61,15 @@ if ticker_list is not None:
         diff = None
         target_price = strategy.iloc[-1].get('target_price')
         direction = strategy.iloc[-1].get('direction', '')
+        signal = strategy.iloc[-1]['fbb_signal']
         
         if target_price and not pd.isna(target_price):
             # Use target price for difference calculation
             diff = target_price - strategy.iloc[-1]['close']
+        elif signal == 0.5:  # Partial buy - use fbb_low5
+            diff = strategy.iloc[-1]['close'] - strategy.iloc[-1]['fbb_low5']
+        elif signal == -0.5:  # Partial sell - use fbb_up6
+            diff = strategy.iloc[-1]['fbb_up6'] - strategy.iloc[-1]['close']
         elif direction == 'up':
             # Upward direction: difference from upper band
             diff = strategy.iloc[-1]['fbb_up6'] - strategy.iloc[-1]['close']
@@ -77,7 +82,7 @@ if ticker_list is not None:
         
         diff = round((diff / strategy.iloc[-1]['close']) * 100, 2)
         
-        signals.append(strategy.iloc[-1]['fbb_signal'])
+        signals.append(signal)
         close_prices.append(strategy.iloc[-1]['close'])
         differences.append(diff)
         directions.append(direction)
@@ -89,8 +94,13 @@ df['direction'] = directions
 df = df.sort_values(by=['signal', 'direction', 'diff'], ascending=[False, False, True])
 
 # Save results
+# Full signals
 file_utils.result_csv(df[df['signal'] == 1], sub_dir=file_utils.get_data_type(), ticker='fbb_buy')
 file_utils.result_csv(df[df['signal'] == -1], sub_dir=file_utils.get_data_type(), ticker='fbb_sell')
+# Partial signals
+file_utils.result_csv(df[df['signal'] == 0.5], sub_dir=file_utils.get_data_type(), ticker='fbb_partial_buy')
+file_utils.result_csv(df[df['signal'] == -0.5], sub_dir=file_utils.get_data_type(), ticker='fbb_partial_sell')
+# No signal
 file_utils.result_csv(df[df['signal'] == 0], sub_dir=file_utils.get_data_type(), ticker='fbb_wait')
 
 logger.info("Completed FBB")
