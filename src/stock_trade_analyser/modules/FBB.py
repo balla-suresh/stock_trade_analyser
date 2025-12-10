@@ -6,7 +6,6 @@ from stock_trade_analyser.tools.downloader import Downloader
 from stock_trade_analyser.models.ta import FibonacciBollingerBands
 from stock_trade_analyser.tools.log_utils import LoggerUtils
 import pandas as pd
-from stock_trade_analyser.tools.backtest import BackTest
 from stock_trade_analyser.tools.file_utils import FileUtils
 import datetime
 
@@ -28,7 +27,6 @@ fbb = FibonacciBollingerBands(
     multiplier=config["fbb"]["multiplier"],
     use_vwma=config["fbb"]["use_vwma"]
 )
-back_test = BackTest()
 
 df = pd.DataFrame(ticker_list, columns=['symbol'])  # type: ignore
 df = df.set_index('symbol')
