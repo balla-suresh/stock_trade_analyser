@@ -36,6 +36,7 @@ df = df.set_index('symbol')
 signals = []
 close_prices = []
 differences = []
+directions = []
 
 if ticker_list is not None:
     for each_ticker in ticker_list:
@@ -79,13 +80,13 @@ if ticker_list is not None:
         signals.append(strategy.iloc[-1]['fbb_signal'])
         close_prices.append(strategy.iloc[-1]['close'])
         differences.append(diff)
-
+        directions.append(direction)
 df['signal'] = signals
 df['close'] = close_prices
 df['diff'] = differences
-
+df['direction'] = directions
 # Sort by signal and difference
-df = df.sort_values(by=['signal', 'diff'], ascending=[False, True])
+df = df.sort_values(by=['signal', 'direction', 'diff'], ascending=[False, False, True])
 
 # Save results
 file_utils.result_csv(df[df['signal'] == 1], sub_dir=file_utils.get_data_type(), ticker='fbb_buy')

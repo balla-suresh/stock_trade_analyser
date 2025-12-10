@@ -402,7 +402,7 @@ class FibonacciBollingerBands:
             else:
                 return 0.45
 
-    def predict_fbb_touch_and_reversal(self, df, lookback_period=20, max_days_ahead=60):
+    def predict_fbb_touch_and_reversal(self, df, lookback_period=15, max_days_ahead=60):
         """
         Predict which Fibonacci Bollinger Band level the price will touch and when,
         before it reverses.
@@ -536,7 +536,7 @@ class FibonacciBollingerBands:
             'all_levels': fbb_levels
         }
 
-    def get_signal(self, ticker, data, lookback_period=20, max_days_ahead=60):
+    def get_signal(self, ticker, data, lookback_period=15, max_days_ahead=60):
         """
         Get trading signals based on Fibonacci Bollinger Bands with predictions
         
