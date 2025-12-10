@@ -263,6 +263,341 @@ class SupportResistance:
     def get_signal(self, ticker, data):
         print("nothing")
 
+
+class FibonacciBollingerBands:
+    def __init__(self, length: int = 200, multiplier: float = 3.0, use_vwma: bool = True):
+        """
+        Initialize Fibonacci Bollinger Bands
+        
+        Parameters:
+        -----------
+        length : int
+            Period for calculation (default: 200)
+        multiplier : float
+            Multiplier for standard deviation (default: 3.0)
+        use_vwma : bool
+            If True, use Volume Weighted Moving Average
+            If False, use Simple Moving Average
+        """
+        logger.info("Initializing FibonacciBollingerBands")
+        self.length = length
+        self.multiplier = multiplier
+        self.use_vwma = use_vwma
+
+    def _vwma(self, src, volume, length):
+        """
+        Volume Weighted Moving Average (VWMA)
+        VWMA = Sum(Price * Volume) / Sum(Volume) over the period
+        """
+        return (src * volume).rolling(window=length).sum() / volume.rolling(window=length).sum()
+
+    def setup(self, data):
+        """
+        Calculate Fibonacci Bollinger Bands
+        
+        Parameters:
+        -----------
+        data : pd.DataFrame
+            DataFrame with OHLCV data (columns should be lowercase)
+        
+        Returns:
+        --------
+        pd.DataFrame with FBB columns added
+        """
+        logger.info(f"Calculating Fibonacci Bollinger Bands: length={self.length}, multiplier={self.multiplier}, use_vwma={self.use_vwma}")
+        
+        df = data.copy()
+        
+        # Ensure column names are lowercase
+        df.columns = df.columns.str.lower()
+        
+        # Calculate typical price (hlc3)
+        tp = (df['high'] + df['low'] + df['close']) / 3
+        
+        # Calculate basis (moving average)
+        if self.use_vwma:
+            # Check if Volume column exists
+            if 'volume' not in df.columns:
+                logger.warning("Volume column not found. Falling back to Simple Moving Average.")
+                basis = tp.rolling(self.length).mean()
+            else:
+                basis = self._vwma(tp, df['volume'], self.length)
+        else:
+            # Simple Moving Average
+            basis = tp.rolling(self.length).mean()
+        
+        # Calculate standard deviation of the source (tp/hlc3)
+        dev = self.multiplier * tp.rolling(self.length).std()
+        
+        # Calculate Fibonacci Bollinger Bands
+        df['fbb_mid'] = basis
+        df['fbb_up1'] = basis + (0.236 * dev)
+        df['fbb_up2'] = basis + (0.382 * dev)
+        df['fbb_up3'] = basis + (0.5 * dev)
+        df['fbb_up4'] = basis + (0.618 * dev)
+        df['fbb_up5'] = basis + (0.764 * dev)
+        df['fbb_up6'] = basis + (1 * dev)
+        df['fbb_low1'] = basis - (0.236 * dev)
+        df['fbb_low2'] = basis - (0.382 * dev)
+        df['fbb_low3'] = basis - (0.5 * dev)
+        df['fbb_low4'] = basis - (0.618 * dev)
+        df['fbb_low5'] = basis - (0.764 * dev)
+        df['fbb_low6'] = basis - (1 * dev)
+        
+        logger.info("Finished calculating Fibonacci Bollinger Bands")
+        return df
+
+    def _calculate_reversal_probability(self, df, target_level, current_idx, lookback=50):
+        """
+        Calculate probability of reversal after touching a FBB level based on historical patterns.
+        """
+        if target_level is None or current_idx < lookback:
+            return 0.5  # Default probability
+        
+        # Look at historical touches of this level
+        reversal_count = 0
+        touch_count = 0
+        
+        # Get the level values
+        level_values = df[target_level].iloc[max(0, current_idx-lookback):current_idx]
+        prices = df['close'].iloc[max(0, current_idx-lookback):current_idx]
+        
+        # Check if price touched the level and then reversed
+        for i in range(1, len(prices)):
+            prev_price = prices.iloc[i-1]
+            curr_price = prices.iloc[i]
+            level_price = level_values.iloc[i]
+            
+            # Check if price crossed the level
+            if target_level.startswith('fbb_up'):
+                # For upper levels, check if price went above and then below
+                if prev_price <= level_price and curr_price > level_price:
+                    touch_count += 1
+                    # Check if it reversed (went back down) within next 5 days
+                    if i + 5 < len(prices):
+                        future_prices = prices.iloc[i:i+6]
+                        if future_prices.min() < level_price:
+                            reversal_count += 1
+            else:
+                # For lower levels, check if price went below and then above
+                if prev_price >= level_price and curr_price < level_price:
+                    touch_count += 1
+                    # Check if it reversed (went back up) within next 5 days
+                    if i + 5 < len(prices):
+                        future_prices = prices.iloc[i:i+6]
+                        if future_prices.max() > level_price:
+                            reversal_count += 1
+        
+        if touch_count > 0:
+            return reversal_count / touch_count
+        else:
+            # If no historical touches, use level-based probability
+            # Extreme levels (up6, low6) have higher reversal probability
+            if 'up6' in target_level or 'low6' in target_level:
+                return 0.75
+            elif 'up5' in target_level or 'low5' in target_level:
+                return 0.65
+            elif 'up4' in target_level or 'low4' in target_level:
+                return 0.55
+            else:
+                return 0.45
+
+    def predict_fbb_touch_and_reversal(self, df, lookback_period=20, max_days_ahead=60):
+        """
+        Predict which Fibonacci Bollinger Band level the price will touch and when,
+        before it reverses.
+        
+        Parameters:
+        -----------
+        df : pd.DataFrame
+            DataFrame with OHLC data and FBB columns (lowercase column names)
+        lookback_period : int
+            Number of days to look back for velocity calculation
+        max_days_ahead : int
+            Maximum number of days to project forward
+        
+        Returns:
+        --------
+        dict : Prediction results with:
+            - target_level: Which FBB level will be touched (e.g., 'fbb_up6', 'fbb_low6')
+            - target_price: Price level to be touched
+            - predicted_date: Estimated date when level will be touched
+            - days_to_touch: Number of days until touch
+            - current_price: Current closing price
+            - direction: 'up' or 'down'
+            - reversal_probability: Probability of reversal after touch (0-1)
+        """
+        if len(df) < lookback_period:
+            return None
+        
+        # Get current values
+        current_idx = len(df) - 1
+        current_price = df['close'].iloc[current_idx]
+        
+        # Handle date index
+        if isinstance(df.index, pd.DatetimeIndex):
+            current_date = df.index[current_idx]
+        else:
+            try:
+                current_date = pd.to_datetime(df.index[current_idx])
+            except:
+                current_date = pd.Timestamp.now()
+        
+        # Get latest FBB levels (skip NaN values)
+        fbb_levels = {}
+        for level in ['fbb_up6', 'fbb_up5', 'fbb_up4', 'fbb_up3', 'fbb_up2', 'fbb_up1', 
+                      'fbb_mid', 'fbb_low1', 'fbb_low2', 'fbb_low3', 'fbb_low4', 'fbb_low5', 'fbb_low6']:
+            if level in df.columns:
+                value = df[level].iloc[current_idx]
+                if not pd.isna(value):
+                    fbb_levels[level] = value
+        
+        # Calculate price velocity (momentum)
+        recent_prices = df['close'].iloc[-lookback_period:].values
+        recent_dates = np.arange(len(recent_prices))
+        
+        # Linear regression to get velocity (price change per day)
+        if len(recent_prices) > 1:
+            # Calculate average daily change
+            price_changes = np.diff(recent_prices)
+            velocity = np.mean(price_changes)  # Average price change per day
+            
+            # Alternative: Use linear regression for more accurate velocity
+            if len(recent_prices) >= 2:
+                slope = np.polyfit(recent_dates, recent_prices, 1)[0]
+                velocity = slope
+        else:
+            velocity = 0
+        
+        # Determine direction
+        direction = 'up' if velocity > 0 else 'down'
+        
+        # Find which level will be touched first
+        target_level = None
+        target_price = None
+        days_to_touch = None
+        
+        if direction == 'up':
+            # Check upper levels (in order from closest to farthest)
+            upper_levels = ['fbb_up1', 'fbb_up2', 'fbb_up3', 'fbb_up4', 'fbb_up5', 'fbb_up6']
+            for level in upper_levels:
+                if level in fbb_levels:
+                    level_price = fbb_levels[level]
+                    if level_price > current_price:
+                        distance = level_price - current_price
+                        if velocity > 0:
+                            days_needed = distance / velocity
+                            if days_needed > 0 and days_needed <= max_days_ahead:
+                                target_level = level
+                                target_price = level_price
+                                days_to_touch = int(np.ceil(days_needed))
+                                break
+        else:
+            # Check lower levels (in order from closest to farthest)
+            lower_levels = ['fbb_low1', 'fbb_low2', 'fbb_low3', 'fbb_low4', 'fbb_low5', 'fbb_low6']
+            for level in lower_levels:
+                if level in fbb_levels:
+                    level_price = fbb_levels[level]
+                    if level_price < current_price:
+                        distance = current_price - level_price
+                        if velocity < 0:
+                            days_needed = abs(distance / velocity)
+                            if days_needed > 0 and days_needed <= max_days_ahead:
+                                target_level = level
+                                target_price = level_price
+                                days_to_touch = int(np.ceil(days_needed))
+                                break
+        
+        # Calculate reversal probability based on historical patterns
+        reversal_probability = self._calculate_reversal_probability(df, target_level, current_idx)
+        
+        # Calculate predicted date
+        if days_to_touch:
+            try:
+                if isinstance(current_date, pd.Timestamp):
+                    predicted_date = current_date + pd.Timedelta(days=days_to_touch)
+                else:
+                    predicted_date = pd.Timestamp.now() + pd.Timedelta(days=days_to_touch)
+            except:
+                predicted_date = None
+        else:
+            predicted_date = None
+        
+        return {
+            'target_level': target_level,
+            'target_price': target_price,
+            'predicted_date': predicted_date,
+            'days_to_touch': days_to_touch,
+            'current_price': current_price,
+            'current_date': current_date,
+            'direction': direction,
+            'velocity': velocity,
+            'reversal_probability': reversal_probability,
+            'all_levels': fbb_levels
+        }
+
+    def get_signal(self, ticker, data, lookback_period=20, max_days_ahead=60):
+        """
+        Get trading signals based on Fibonacci Bollinger Bands with predictions
+        
+        Parameters:
+        -----------
+        ticker : str
+            Ticker symbol
+        data : pd.DataFrame
+            DataFrame with FBB columns (from setup method)
+        lookback_period : int
+            Number of days to look back for velocity calculation in prediction
+        max_days_ahead : int
+            Maximum number of days to project forward in prediction
+        
+        Returns:
+        --------
+        pd.DataFrame with signal columns added:
+            - fbb_signal: Trading signal (0: no signal, 1: buy, -1: sell)
+            - target_price: Predicted price level to be touched
+            - days_to_touch: Number of days until target level is touched
+            - reversal_probability: Probability of reversal after touch
+            - direction: Price direction ('up' or 'down')
+        """
+        logger.info(f"Getting FBB signals for {ticker}")
+        
+        df = data.copy()
+        
+        # Get prediction for the latest data point
+        prediction = self.predict_fbb_touch_and_reversal(df, lookback_period, max_days_ahead)
+        
+        # Initialize signal columns
+        df['fbb_signal'] = 0  # 0: no signal, 1: buy, -1: sell
+        df['target_price'] = None
+        df['days_to_touch'] = None
+        df['reversal_probability'] = None
+        df['direction'] = None
+        
+        # Simple signal logic: buy when price touches lower bands, sell when touches upper bands
+        for i in range(1, len(df)):
+            close = df['close'].iloc[i]
+            prev_close = df['close'].iloc[i-1]
+            
+            # Check if price touched or crossed lower bands (buy signal)
+            if close <= df['fbb_low6'].iloc[i] or (prev_close > df['fbb_low6'].iloc[i-1] and close <= df['fbb_low6'].iloc[i]):
+                df.loc[df.index[i], 'fbb_signal'] = 1
+            # Check if price touched or crossed upper bands (sell signal)
+            elif close >= df['fbb_up6'].iloc[i] or (prev_close < df['fbb_up6'].iloc[i-1] and close >= df['fbb_up6'].iloc[i]):
+                df.loc[df.index[i], 'fbb_signal'] = -1
+        
+        # Add prediction data to the last row
+        if prediction:
+            last_idx = len(df) - 1
+            df.loc[df.index[last_idx], 'target_price'] = prediction.get('target_price')
+            df.loc[df.index[last_idx], 'days_to_touch'] = prediction.get('days_to_touch')
+            df.loc[df.index[last_idx], 'reversal_probability'] = prediction.get('reversal_probability')
+            df.loc[df.index[last_idx], 'direction'] = prediction.get('direction')
+        
+        logger.info(f"Finished getting FBB signals for {ticker}")
+        return df
+
+
 class ZigZag:
     def __init__(self, zigzag_period: int = 10, show_projection: bool = True):
         self.zigzag_period = zigzag_period
