@@ -6,23 +6,66 @@ import datetime as datetime
 import yfinance as yf
 import numpy as np
 
-def fibonacci_bollinger_bands(df, n=20, m=3):
+def vwma(src, volume, length):
+    """
+    Volume Weighted Moving Average (VWMA)
+    VWMA = Sum(Price * Volume) / Sum(Volume) over the period
+    """
+    return (src * volume).rolling(window=length).sum() / volume.rolling(window=length).sum()
+
+
+def fibonacci_bollinger_bands(df, n=200, m=3.0, use_vwma=True):
+    """
+    Calculate Fibonacci Bollinger Bands
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        DataFrame with OHLCV data
+    n : int
+        Length/period for calculation (default: 200)
+    m : float
+        Multiplier for standard deviation (default: 3.0)
+    use_vwma : bool
+        If True, use Volume Weighted Moving Average
+        If False, use Simple Moving Average (original implementation)
+    
+    Returns:
+    --------
+    pd.DataFrame with FBB columns added
+    """
+    # Calculate typical price (hlc3)
     tp = (df['High'] + df['Low'] + df['Close']) / 3
-    ma = tp.rolling(n).mean()
-    sd = m * tp.rolling(n).std()
-    df['FBB_mid'] = ma
-    df['FBB_up1'] = ma + (0.236 * sd)
-    df['FBB_up2'] = ma + (0.382 * sd)
-    df['FBB_up3'] = ma + (0.5 * sd)
-    df['FBB_up4'] = ma + (0.618 * sd)
-    df['FBB_up5'] = ma + (0.764 * sd)
-    df['FBB_up6'] = ma + (1 * sd)
-    df['FBB_low1'] = ma - (0.236 * sd)
-    df['FBB_low2'] = ma - (0.382 * sd)
-    df['FBB_low3'] = ma - (0.5 * sd)
-    df['FBB_low4'] = ma - (0.618 * sd)
-    df['FBB_low5'] = ma - (0.764 * sd)
-    df['FBB_low6'] = ma - (1 * sd)
+    
+    # Calculate basis (moving average)
+    if use_vwma:
+        # Check if Volume column exists
+        if 'Volume' not in df.columns:
+            raise ValueError("Volume column is required for VWMA calculation. "
+                           "Set use_vwma=False to use Simple Moving Average instead.")
+        basis = vwma(tp, df['Volume'], n)
+    else:
+        # Simple Moving Average (original implementation)
+        basis = tp.rolling(n).mean()
+    
+    # Calculate standard deviation of the source (tp/hlc3)
+    dev = m * tp.rolling(n).std()
+    
+    # Calculate Fibonacci Bollinger Bands
+    df['FBB_mid'] = basis
+    df['FBB_up1'] = basis + (0.236 * dev)
+    df['FBB_up2'] = basis + (0.382 * dev)
+    df['FBB_up3'] = basis + (0.5 * dev)
+    df['FBB_up4'] = basis + (0.618 * dev)
+    df['FBB_up5'] = basis + (0.764 * dev)
+    df['FBB_up6'] = basis + (1 * dev)
+    df['FBB_low1'] = basis - (0.236 * dev)
+    df['FBB_low2'] = basis - (0.382 * dev)
+    df['FBB_low3'] = basis - (0.5 * dev)
+    df['FBB_low4'] = basis - (0.618 * dev)
+    df['FBB_low5'] = basis - (0.764 * dev)
+    df['FBB_low6'] = basis - (1 * dev)
+    
     return df
 
 
@@ -276,12 +319,10 @@ def plot_fbb(df, fname):
 
 if __name__ == '__main__':
     today = datetime.datetime.now().date()
-    print(today)
     # Subtract 365 days from today's date
     one_year_ago = today - datetime.timedelta(days=1000)
-    print(one_year_ago)
 
-    df = yf.download('TATAPOWER.NS', start=one_year_ago, end=today, auto_adjust=False)
+    df = yf.download('AVGO', start=one_year_ago, end=today, auto_adjust=False)
     # Reset index if it's a DatetimeIndex to make it easier to work with
     if isinstance(df.index, pd.DatetimeIndex):
         df = df.copy()
@@ -305,10 +346,11 @@ if __name__ == '__main__':
     if column_mapping:
         df = df.rename(columns=column_mapping)
 
-    fibonacci_bollinger_bands(df, 20, 3)
+    use_vwma = 'Volume' in df.columns
+    fibonacci_bollinger_bands(df, n=200, m=3.0, use_vwma=use_vwma)
 
     # Predict FBB touch and reversal
-    prediction = predict_fbb_touch_and_reversal(df, lookback_period=20, max_days_ahead=60)
+    prediction = predict_fbb_touch_and_reversal(df, lookback_period=15, max_days_ahead=60)
     
     if prediction:
         print("\n" + "="*60)
