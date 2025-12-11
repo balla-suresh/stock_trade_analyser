@@ -33,8 +33,10 @@ df = df.set_index('symbol')
 
 signals = []
 close_prices = []
-differences = []
 directions = []
+target_prices = []
+days_to_touch = []
+reversal_probabilities = []
 
 if ticker_list is not None:
     for each_ticker in ticker_list:
@@ -60,36 +62,28 @@ if ticker_list is not None:
         target_price = strategy.iloc[-1].get('target_price')
         direction = strategy.iloc[-1].get('direction', '')
         signal = strategy.iloc[-1]['fbb_signal']
+        reversal_probability = strategy.iloc[-1].get('reversal_probability')
         
-        if target_price and not pd.isna(target_price):
-            # Use target price for difference calculation
-            diff = target_price - strategy.iloc[-1]['close']
-        elif signal == 0.5:  # Partial buy - use fbb_low5
-            diff = strategy.iloc[-1]['close'] - strategy.iloc[-1]['fbb_low5']
-        elif signal == -0.5:  # Partial sell - use fbb_up6
-            diff = strategy.iloc[-1]['fbb_up6'] - strategy.iloc[-1]['close']
-        elif direction == 'up':
-            # Upward direction: difference from upper band
-            diff = strategy.iloc[-1]['fbb_up6'] - strategy.iloc[-1]['close']
-        elif direction == 'down':
-            # Downward direction: difference from lower band
-            diff = strategy.iloc[-1]['close'] - strategy.iloc[-1]['fbb_low6']
+        # Convert reversal_probability from decimal (0-1) to percentage (0-100)
+        if reversal_probability is not None and not pd.isna(reversal_probability):
+            reversal_probability = round(reversal_probability * 100, 2)
         else:
-            # No direction: difference from middle band
-            diff = strategy.iloc[-1]['close'] - strategy.iloc[-1]['fbb_mid']
-        
-        diff = round((diff / strategy.iloc[-1]['close']) * 100, 2)
+            reversal_probability = None
         
         signals.append(signal)
         close_prices.append(strategy.iloc[-1]['close'])
-        differences.append(diff)
         directions.append(direction)
+        target_prices.append(target_price)
+        days_to_touch.append(strategy.iloc[-1].get('days_to_touch'))
+        reversal_probabilities.append(reversal_probability)
 df['signal'] = signals
 df['close'] = close_prices
-df['diff'] = differences
 df['direction'] = directions
+df['target_price'] = target_prices
+df['days_to_touch'] = days_to_touch
+df['reversal_probability'] = reversal_probabilities
 # Sort by signal and difference
-df = df.sort_values(by=['signal', 'direction', 'diff'], ascending=[False, False, True])
+df = df.sort_values(by=['signal', 'direction'], ascending=[False, False])
 
 # Save results
 # Full signals
