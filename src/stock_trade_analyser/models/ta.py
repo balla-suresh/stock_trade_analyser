@@ -496,6 +496,11 @@ class FibonacciBollingerBands:
                 if abs(reversal_velocity) > abs(velocity) * 0.5:
                     direction = recent_touch_direction
                     velocity = reversal_velocity
+                    # Ensure velocity sign matches the overridden direction
+                    if direction == 'up' and velocity < 0:
+                        velocity = abs(velocity)
+                    elif direction == 'down' and velocity > 0:
+                        velocity = -abs(velocity)
         
         # Use optimal lookback based on which timeframe has strongest momentum
         optimal_lookback = lookbacks[np.argmax(np.abs(velocities))]
@@ -562,78 +567,99 @@ class FibonacciBollingerBands:
             lookback_period = optimal_lookback
         
         # Find which level will be touched first
+        # Use all bands sorted by distance from current price in the direction of travel
         target_level = None
         target_price = None
         days_to_touch = None
         
+        all_level_names = [
+            'fbb_up6', 'fbb_up5', 'fbb_up4', 'fbb_up3', 'fbb_up2', 'fbb_up1',
+            'fbb_mid',
+            'fbb_low1', 'fbb_low2', 'fbb_low3', 'fbb_low4', 'fbb_low5', 'fbb_low6'
+        ]
+        
         if direction == 'up':
-            # Check upper levels (in order from closest to farthest)
-            upper_levels = ['fbb_up1', 'fbb_up2', 'fbb_up3', 'fbb_up4', 'fbb_up5', 'fbb_up6']
-            for level in upper_levels:
+            # Collect all bands above current price, sorted closest first
+            candidates = []
+            for level in all_level_names:
                 if level in fbb_levels:
                     level_price = fbb_levels[level]
                     if level_price > current_price:
-                        distance = level_price - current_price
-                        if velocity > 0:
-                            days_needed = distance / velocity
-                            if days_needed > 0 and days_needed <= max_days_ahead:
-                                target_level = level
-                                target_price = level_price
-                                days_to_touch = int(np.ceil(days_needed))
-                                break
+                        candidates.append((level, level_price))
+            candidates.sort(key=lambda x: x[1])
+            
+            for level, level_price in candidates:
+                distance = level_price - current_price
+                if velocity > 0:
+                    days_needed = distance / velocity
+                    if days_needed > 0 and days_needed <= max_days_ahead:
+                        target_level = level
+                        target_price = level_price
+                        days_to_touch = int(np.ceil(days_needed))
+                        break
             
             if target_level is None:
-                # Price is already above all upper bands — predict reversal back
-                # to the nearest upper band below current price (closest first)
-                for level in reversed(upper_levels):
+                # Price is already above all bands — predict reversal back
+                # to the nearest band below current price
+                reversal_candidates = []
+                for level in all_level_names:
                     if level in fbb_levels:
                         level_price = fbb_levels[level]
                         if level_price <= current_price:
-                            distance = current_price - level_price
-                            if velocity > 0:
-                                days_needed = distance / velocity
-                            else:
-                                days_needed = distance / abs(velocity) if velocity != 0 else max_days_ahead
-                            if days_needed > 0 and days_needed <= max_days_ahead:
-                                target_level = level
-                                target_price = level_price
-                                days_to_touch = int(np.ceil(days_needed))
-                                direction = 'reversal_down'
-                                break
+                            reversal_candidates.append((level, level_price))
+                reversal_candidates.sort(key=lambda x: x[1], reverse=True)
+                
+                for level, level_price in reversal_candidates:
+                    distance = current_price - level_price
+                    abs_velocity = abs(velocity) if velocity != 0 else 1
+                    days_needed = distance / abs_velocity
+                    if days_needed > 0 and days_needed <= max_days_ahead:
+                        target_level = level
+                        target_price = level_price
+                        days_to_touch = int(np.ceil(days_needed))
+                        direction = 'reversal_down'
+                        break
         else:
-            # Check lower levels (in order from closest to farthest)
-            lower_levels = ['fbb_low1', 'fbb_low2', 'fbb_low3', 'fbb_low4', 'fbb_low5', 'fbb_low6']
-            for level in lower_levels:
+            # Collect all bands below current price, sorted closest first
+            candidates = []
+            for level in all_level_names:
                 if level in fbb_levels:
                     level_price = fbb_levels[level]
                     if level_price < current_price:
-                        distance = current_price - level_price
-                        if velocity < 0:
-                            days_needed = abs(distance / velocity)
-                            if days_needed > 0 and days_needed <= max_days_ahead:
-                                target_level = level
-                                target_price = level_price
-                                days_to_touch = int(np.ceil(days_needed))
-                                break
+                        candidates.append((level, level_price))
+            candidates.sort(key=lambda x: x[1], reverse=True)
+            
+            for level, level_price in candidates:
+                distance = current_price - level_price
+                if velocity < 0:
+                    days_needed = distance / abs(velocity)
+                    if days_needed > 0 and days_needed <= max_days_ahead:
+                        target_level = level
+                        target_price = level_price
+                        days_to_touch = int(np.ceil(days_needed))
+                        break
             
             if target_level is None:
-                # Price is already below all lower bands — predict reversal back
-                # to the nearest lower band above current price (closest first)
-                for level in reversed(lower_levels):
+                # Price is already below all bands — predict reversal back
+                # to the nearest band above current price
+                reversal_candidates = []
+                for level in all_level_names:
                     if level in fbb_levels:
                         level_price = fbb_levels[level]
                         if level_price >= current_price:
-                            distance = level_price - current_price
-                            if velocity < 0:
-                                days_needed = distance / abs(velocity)
-                            else:
-                                days_needed = distance / velocity if velocity != 0 else max_days_ahead
-                            if days_needed > 0 and days_needed <= max_days_ahead:
-                                target_level = level
-                                target_price = level_price
-                                days_to_touch = int(np.ceil(days_needed))
-                                direction = 'reversal_up'
-                                break
+                            reversal_candidates.append((level, level_price))
+                reversal_candidates.sort(key=lambda x: x[1])
+                
+                for level, level_price in reversal_candidates:
+                    distance = level_price - current_price
+                    abs_velocity = abs(velocity) if velocity != 0 else 1
+                    days_needed = distance / abs_velocity
+                    if days_needed > 0 and days_needed <= max_days_ahead:
+                        target_level = level
+                        target_price = level_price
+                        days_to_touch = int(np.ceil(days_needed))
+                        direction = 'reversal_up'
+                        break
         
         # Calculate reversal probability based on historical patterns
         reversal_probability = self._calculate_reversal_probability(df, target_level, current_idx)
