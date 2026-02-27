@@ -83,7 +83,7 @@ df['target_price'] = target_prices
 df['days_to_touch'] = days_to_touch
 df['reversal_probability'] = reversal_probabilities
 # Sort by signal and difference
-df = df.sort_values(by=['signal', 'direction'], ascending=[False, False])
+df = df.sort_values(by=['signal', 'direction', 'reversal_probability'], ascending=[False, False, False])
 
 # Save results
 # Full signals

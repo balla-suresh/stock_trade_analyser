@@ -581,6 +581,25 @@ class FibonacciBollingerBands:
                                 target_price = level_price
                                 days_to_touch = int(np.ceil(days_needed))
                                 break
+            
+            if target_level is None:
+                # Price is already above all upper bands — predict reversal back
+                # to the nearest upper band below current price (closest first)
+                for level in reversed(upper_levels):
+                    if level in fbb_levels:
+                        level_price = fbb_levels[level]
+                        if level_price <= current_price:
+                            distance = current_price - level_price
+                            if velocity > 0:
+                                days_needed = distance / velocity
+                            else:
+                                days_needed = distance / abs(velocity) if velocity != 0 else max_days_ahead
+                            if days_needed > 0 and days_needed <= max_days_ahead:
+                                target_level = level
+                                target_price = level_price
+                                days_to_touch = int(np.ceil(days_needed))
+                                direction = 'reversal_down'
+                                break
         else:
             # Check lower levels (in order from closest to farthest)
             lower_levels = ['fbb_low1', 'fbb_low2', 'fbb_low3', 'fbb_low4', 'fbb_low5', 'fbb_low6']
@@ -596,9 +615,32 @@ class FibonacciBollingerBands:
                                 target_price = level_price
                                 days_to_touch = int(np.ceil(days_needed))
                                 break
+            
+            if target_level is None:
+                # Price is already below all lower bands — predict reversal back
+                # to the nearest lower band above current price (closest first)
+                for level in reversed(lower_levels):
+                    if level in fbb_levels:
+                        level_price = fbb_levels[level]
+                        if level_price >= current_price:
+                            distance = level_price - current_price
+                            if velocity < 0:
+                                days_needed = distance / abs(velocity)
+                            else:
+                                days_needed = distance / velocity if velocity != 0 else max_days_ahead
+                            if days_needed > 0 and days_needed <= max_days_ahead:
+                                target_level = level
+                                target_price = level_price
+                                days_to_touch = int(np.ceil(days_needed))
+                                direction = 'reversal_up'
+                                break
         
         # Calculate reversal probability based on historical patterns
         reversal_probability = self._calculate_reversal_probability(df, target_level, current_idx)
+        
+        # Price beyond all bands has high reversal probability
+        if direction in ('reversal_up', 'reversal_down'):
+            reversal_probability = max(reversal_probability, 0.75)
         
         # Calculate predicted date
         if days_to_touch:
@@ -612,6 +654,12 @@ class FibonacciBollingerBands:
         else:
             predicted_date = None
         
+        logger.info("Predicted date: %s", predicted_date)
+        logger.info("Days to touch: %s", days_to_touch)
+        logger.info("Direction: %s", direction)
+        logger.info("Velocity: %s", velocity)
+        logger.info("Reversal probability: %s", reversal_probability)
+
         return {
             'target_level': target_level,
             'target_price': target_price,

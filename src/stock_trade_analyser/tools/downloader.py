@@ -73,9 +73,7 @@ class Downloader:
                 group_by='ticker',
                 auto_adjust=False,
                 prepost=False,
-                threads=self.is_threads,
-                proxy=None,
-                ignore_tz=True
+                threads=self.is_threads
             )
             self.file_utils.create_all_csv(new_data, new_ticker_list)
             self.ticker_list = self.file_utils.current_ticker_list(self.ticker_list)
