@@ -1,7 +1,7 @@
 {
     "download": {
         "interval": "1d",
-        "period": "1y",
+        "period": "7y",
         "is_download": false,
         "data_type": "day"
     },
@@ -17,7 +17,8 @@
         "intermediate": false
     },
     "seasonal": {
-        "intermediate": false
+        "intermediate": false,
+        "clean_output": false
     },
     "data": {
         "window_size": 20,

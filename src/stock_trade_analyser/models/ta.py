@@ -899,12 +899,16 @@ class Seasonal:
     calendar quarter (Q1..Q4) in every historical year, averages those
     across years to get one number per quarter, then ranks the four
     quarters 1..4 where 1 = worst and 4 = best.
+
+    The (year, quarter) of the last bar in the series is excluded from
+    the per-year averages when aggregating by quarter, so a still-open
+    calendar quarter does not bias historical quarter comparisons.
     """
 
     QUARTERS = [1, 2, 3, 4]
 
     def __init__(self):
-        logger.info("Initializing Seasonal")
+        logger.debug("Initializing Seasonal")
 
     @staticmethod
     def _current_quarter(index: pd.DatetimeIndex) -> int:
@@ -921,7 +925,7 @@ class Seasonal:
         Quarters with no historical data get avg_return_pct = NaN and
         rating = None.
         """
-        logger.info(f"Starting Seasonal setup for {ticker}")
+        logger.debug(f"Starting Seasonal setup for {ticker}")
         df = data.copy()
         if not isinstance(df.index, pd.DatetimeIndex):
             df.index = pd.to_datetime(df.index)
@@ -937,7 +941,11 @@ class Seasonal:
             (per_year['end_close'] - per_year['start_close']) / per_year['start_close']
         ) * 100
 
-        per_quarter = per_year.groupby('_quarter').agg(
+        last_ts = df.index[-1]
+        per_year_fit = per_year[
+            ~((per_year['_year'] == last_ts.year) & (per_year['_quarter'] == last_ts.quarter))
+        ]
+        per_quarter = per_year_fit.groupby('_quarter').agg(
             avg_return_pct=('return_pct', 'mean'),
             years_covered=('_year', 'nunique'),
         )
@@ -948,13 +956,13 @@ class Seasonal:
         ranks = per_quarter['avg_return_pct'].rank(method='min', ascending=True, na_option='keep')
         per_quarter['rating'] = ranks.astype('Int64')
 
-        logger.info(f"Finished Seasonal setup for {ticker}")
+        logger.debug(f"Finished Seasonal setup for {ticker}")
         return per_quarter
 
     def get_summary(self, ticker: str, data: pd.DataFrame, seasonal_data: pd.DataFrame) -> dict:
         """Return a flat dict with the 4 quarter ratings plus the current
         quarter and its rating."""
-        logger.info(f"Starting Seasonal summary for {ticker}")
+        logger.debug(f"Starting Seasonal summary for {ticker}")
         current_q = self._current_quarter(data.index)
 
         out = {
@@ -969,5 +977,5 @@ class Seasonal:
                 out[f'q{q}_rating'] = None
 
         out['current_quarter_rating'] = out.get(f'q{current_q}_rating')
-        logger.info(f"Finished Seasonal summary for {ticker}")
+        logger.debug(f"Finished Seasonal summary for {ticker}")
         return out

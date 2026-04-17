@@ -41,7 +41,7 @@ python3 -m src.stock_trade_analyser.modules.stock_predictor
 python3 -m src.stock_trade_analyser.modules.machine_learning
 ```
 
-* **Seasonal**: For each stock, computes the % price increase of each calendar quarter (Q1..Q4) in every historical year, averages those per-quarter returns across years, then ranks the four quarters 1..4 where **1 = worst** and **4 = best**. The output CSV lists all four quarter ratings per ticker along with the current quarter and its rating, sorted by `current_quarter_rating` descending (best-performing tickers for this quarter on top). Results go to `predictions/day/seasonal.csv`.
+* **Seasonal**: For each stock, computes the % price increase of each calendar quarter (Q1..Q4) in every historical year, averages those per-quarter returns across years (excluding the last bar’s calendar quarter so an in-progress quarter does not bias the averages), then ranks the four quarters 1..4 where **1 = worst** and **4 = best**. The output CSV lists all four quarter ratings plus `current_quarter_rating`, sorted ascending on that column. Set `seasonal.clean_output` to `true` in `config/day.json` if you want the same directory clean as other modules. Results go to `predictions/day/seasonal.csv`.
 ```shell
 python3 -m src.stock_trade_analyser.modules.seasonal
 ```
