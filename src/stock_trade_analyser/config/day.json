@@ -18,7 +18,6 @@
     },
     "seasonal": {
         "season": "month",
-        "min_years": 2,
         "intermediate": false
     },
     "data": {

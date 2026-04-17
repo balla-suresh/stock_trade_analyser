@@ -41,7 +41,7 @@ python3 -m src.stock_trade_analyser.modules.stock_predictor
 python3 -m src.stock_trade_analyser.modules.machine_learning
 ```
 
-* **Seasonal**: Same calendar bucket (month, quarter, or week) historical up/down probabilities using `config/day.json`; results go to `predictions/day/seasonal*.csv`.
+* **Seasonal**: For each stock, computes the current calendar bucket's (month, quarter, or week) direction as the mean of daily % returns across every trading day that has ever fallen in that bucket across all historical years. A positive mean marks the bucket 'up', otherwise 'down'. Purely descriptive, no buy/sell decisioning. Configured via `config/day.json`; results go to `predictions/day/seasonal.csv`.
 ```shell
 python3 -m src.stock_trade_analyser.modules.seasonal
 ```

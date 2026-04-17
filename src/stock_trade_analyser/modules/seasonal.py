@@ -31,10 +31,7 @@ loader.download()
 ticker_list = loader.get_ticker_list()
 
 seasonal_cfg = config.get("seasonal", {})
-seasonal = Seasonal(
-    season=seasonal_cfg.get("season", "month"),
-    min_years=seasonal_cfg.get("min_years", 2),
-)
+seasonal = Seasonal(season=seasonal_cfg.get("season", "month"))
 
 rows = []
 
@@ -68,7 +65,7 @@ if ticker_list is not None:
                 ticker=f"seasonal_{each_ticker}",
             )
 
-        summary = seasonal.get_signal(each_ticker, current_data, seasonal_data)
+        summary = seasonal.get_summary(each_ticker, current_data, seasonal_data)
         summary['symbol'] = each_ticker
         rows.append(summary)
 
@@ -79,31 +76,23 @@ if not rows:
 df = pd.DataFrame(rows).set_index('symbol')
 
 column_order = [
-    'signal',
     'season',
     'current_bucket',
-    'history_years',
-    'up_count',
-    'down_count',
-    'prob_up',
-    'prob_down',
-    'avg_return_pct',
-    'current_start_close',
-    'current_close',
-    'current_return_pct',
-    'current_direction',
+    'direction',
+    'avg_daily_return_pct',
+    'up_days',
+    'down_days',
+    'total_days',
+    'years_covered',
 ]
 df = df[[c for c in column_order if c in df.columns]]
 
 df = df.sort_values(
-    by=['signal', 'prob_up', 'history_years'],
-    ascending=[False, False, False],
+    by=['direction', 'avg_daily_return_pct'],
+    ascending=[True, False],
     na_position='last',
 )
 
 file_utils.result_csv(df, sub_dir=file_utils.get_data_type(), ticker='seasonal')
-file_utils.result_csv(df[df['signal'] == 1], sub_dir=file_utils.get_data_type(), ticker='seasonal_buy')
-file_utils.result_csv(df[df['signal'] == -1], sub_dir=file_utils.get_data_type(), ticker='seasonal_sell')
-file_utils.result_csv(df[df['signal'] == 0], sub_dir=file_utils.get_data_type(), ticker='seasonal_wait')
 
 logger.info("Completed seasonal")
