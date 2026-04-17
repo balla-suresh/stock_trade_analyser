@@ -17,7 +17,6 @@
         "intermediate": false
     },
     "seasonal": {
-        "season": "month",
         "intermediate": false
     },
     "data": {

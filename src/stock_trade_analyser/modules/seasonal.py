@@ -31,7 +31,7 @@ loader.download()
 ticker_list = loader.get_ticker_list()
 
 seasonal_cfg = config.get("seasonal", {})
-seasonal = Seasonal(season=seasonal_cfg.get("season", "month"))
+seasonal = Seasonal()
 
 rows = []
 
@@ -76,20 +76,17 @@ if not rows:
 df = pd.DataFrame(rows).set_index('symbol')
 
 column_order = [
-    'season',
-    'current_bucket',
-    'direction',
-    'avg_daily_return_pct',
-    'up_days',
-    'down_days',
-    'total_days',
-    'years_covered',
+    'current_quarter_rating',
+    'q1_rating',
+    'q2_rating',
+    'q3_rating',
+    'q4_rating',
 ]
 df = df[[c for c in column_order if c in df.columns]]
 
 df = df.sort_values(
-    by=['direction', 'avg_daily_return_pct'],
-    ascending=[True, False],
+    by=['current_quarter_rating'],
+    ascending=[True],
     na_position='last',
 )
 

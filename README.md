@@ -41,7 +41,7 @@ python3 -m src.stock_trade_analyser.modules.stock_predictor
 python3 -m src.stock_trade_analyser.modules.machine_learning
 ```
 
-* **Seasonal**: For each stock, computes the current calendar bucket's (month, quarter, or week) direction as the mean of daily % returns across every trading day that has ever fallen in that bucket across all historical years. A positive mean marks the bucket 'up', otherwise 'down'. Purely descriptive, no buy/sell decisioning. Configured via `config/day.json`; results go to `predictions/day/seasonal.csv`.
+* **Seasonal**: For each stock, computes the % price increase of each calendar quarter (Q1..Q4) in every historical year, averages those per-quarter returns across years, then ranks the four quarters 1..4 where **1 = worst** and **4 = best**. The output CSV lists all four quarter ratings per ticker along with the current quarter and its rating, sorted by `current_quarter_rating` descending (best-performing tickers for this quarter on top). Results go to `predictions/day/seasonal.csv`.
 ```shell
 python3 -m src.stock_trade_analyser.modules.seasonal
 ```

@@ -893,107 +893,81 @@ class FutureTrend:
 
 
 class Seasonal:
-    """Seasonal analysis of historical stock returns.
+    """Per-quarter historical performance ratings.
 
-    For a given season bucket (month / quarter / week-of-year) the class
-    computes the bucket's direction as the mean of daily percent returns
-    observed across ALL historical years of that same bucket. A bucket
-    with a positive mean daily return is marked 'up', otherwise 'down'.
-    This is purely descriptive; no buy/sell decisioning.
+    For each ticker the class computes the % price increase for each
+    calendar quarter (Q1..Q4) in every historical year, averages those
+    across years to get one number per quarter, then ranks the four
+    quarters 1..4 where 1 = worst and 4 = best.
     """
 
-    SEASON_MONTH = "month"
-    SEASON_QUARTER = "quarter"
-    SEASON_WEEK = "week"
+    QUARTERS = [1, 2, 3, 4]
 
-    def __init__(self, season: str = "month"):
+    def __init__(self):
         logger.info("Initializing Seasonal")
-        self.season = season if season in (
-            self.SEASON_MONTH, self.SEASON_QUARTER, self.SEASON_WEEK
-        ) else self.SEASON_MONTH
 
-    def _season_key(self, index: pd.DatetimeIndex):
-        if self.season == self.SEASON_QUARTER:
-            return index.year, index.quarter
-        if self.season == self.SEASON_WEEK:
-            iso = index.isocalendar()
-            return iso.year.values, iso.week.values
-        return index.year, index.month
-
-    def _current_bucket(self, index: pd.DatetimeIndex):
-        last = index[-1]
-        if self.season == self.SEASON_QUARTER:
-            return last.quarter
-        if self.season == self.SEASON_WEEK:
-            return int(last.isocalendar().week)
-        return last.month
+    @staticmethod
+    def _current_quarter(index: pd.DatetimeIndex) -> int:
+        return int(index[-1].quarter)
 
     def setup(self, ticker: str, data: pd.DataFrame) -> pd.DataFrame:
-        """Compute the mean daily % return per bucket across ALL years.
+        """Compute per-quarter average % increase and a 1..4 rating.
 
-        Returns a DataFrame indexed by the bucket number with columns:
-          - avg_daily_return_pct: mean of daily % returns across every
-            trading day that ever fell in that bucket
-          - up_days / down_days: counts of positive vs non-positive days
-          - total_days: days observed in that bucket across all years
-          - direction: 'up' if avg_daily_return_pct > 0 else 'down'
-          - years_covered: number of distinct calendar years observed
+        Returns a DataFrame indexed by quarter (1..4) with columns:
+          - avg_return_pct: mean of (start_close -> end_close) % return
+            across every historical year of that quarter
+          - years_covered: number of years contributing to the average
+          - rating: 1 = worst avg_return_pct, 4 = best
+        Quarters with no historical data get avg_return_pct = NaN and
+        rating = None.
         """
         logger.info(f"Starting Seasonal setup for {ticker}")
         df = data.copy()
         if not isinstance(df.index, pd.DatetimeIndex):
             df.index = pd.to_datetime(df.index)
-
         df = df.sort_index()
-        df['daily_return_pct'] = df['close'].pct_change() * 100
 
-        years, buckets = self._season_key(df.index)
-        df = df.assign(_year=years, _bucket=buckets)
-        df = df.dropna(subset=['daily_return_pct'])
+        df = df.assign(_year=df.index.year, _quarter=df.index.quarter)
 
-        grouped = df.groupby('_bucket').agg(
-            avg_daily_return_pct=('daily_return_pct', 'mean'),
-            up_days=('daily_return_pct', lambda s: int((s > 0).sum())),
-            down_days=('daily_return_pct', lambda s: int((s <= 0).sum())),
-            total_days=('daily_return_pct', 'size'),
+        per_year = df.groupby(['_year', '_quarter']).agg(
+            start_close=('close', 'first'),
+            end_close=('close', 'last'),
+        ).reset_index()
+        per_year['return_pct'] = (
+            (per_year['end_close'] - per_year['start_close']) / per_year['start_close']
+        ) * 100
+
+        per_quarter = per_year.groupby('_quarter').agg(
+            avg_return_pct=('return_pct', 'mean'),
             years_covered=('_year', 'nunique'),
         )
-        grouped['direction'] = np.where(grouped['avg_daily_return_pct'] > 0, 'up', 'down')
-        grouped['avg_daily_return_pct'] = grouped['avg_daily_return_pct'].round(4)
+        per_quarter = per_quarter.reindex(self.QUARTERS)
+        per_quarter['years_covered'] = per_quarter['years_covered'].fillna(0).astype(int)
+        per_quarter['avg_return_pct'] = per_quarter['avg_return_pct'].round(4)
+
+        ranks = per_quarter['avg_return_pct'].rank(method='min', ascending=True, na_option='keep')
+        per_quarter['rating'] = ranks.astype('Int64')
+
         logger.info(f"Finished Seasonal setup for {ticker}")
-        return grouped
+        return per_quarter
 
     def get_summary(self, ticker: str, data: pd.DataFrame, seasonal_data: pd.DataFrame) -> dict:
-        """Return a descriptive summary for the ticker's current season.
-
-        Reports the current bucket's direction and mean daily return
-        averaged across all historical years of that same bucket.
-        """
+        """Return a flat dict with the 4 quarter ratings plus the current
+        quarter and its rating."""
         logger.info(f"Starting Seasonal summary for {ticker}")
-        current_bucket = self._current_bucket(data.index)
+        current_q = self._current_quarter(data.index)
 
-        if current_bucket not in seasonal_data.index:
-            logger.info(f"No history for bucket {current_bucket} on {ticker}")
-            return {
-                'season': self.season,
-                'current_bucket': current_bucket,
-                'direction': None,
-                'avg_daily_return_pct': None,
-                'up_days': 0,
-                'down_days': 0,
-                'total_days': 0,
-                'years_covered': 0,
-            }
-
-        row = seasonal_data.loc[current_bucket]
-        logger.info(f"Finished Seasonal summary for {ticker}")
-        return {
-            'season': self.season,
-            'current_bucket': int(current_bucket),
-            'direction': row['direction'],
-            'avg_daily_return_pct': float(row['avg_daily_return_pct']),
-            'up_days': int(row['up_days']),
-            'down_days': int(row['down_days']),
-            'total_days': int(row['total_days']),
-            'years_covered': int(row['years_covered']),
+        out = {
+            'current_quarter': current_q,
+            'current_quarter_rating': None,
         }
+        for q in self.QUARTERS:
+            if q in seasonal_data.index:
+                rating = seasonal_data.loc[q, 'rating']
+                out[f'q{q}_rating'] = int(rating) if pd.notna(rating) else None
+            else:
+                out[f'q{q}_rating'] = None
+
+        out['current_quarter_rating'] = out.get(f'q{current_q}_rating')
+        logger.info(f"Finished Seasonal summary for {ticker}")
+        return out
