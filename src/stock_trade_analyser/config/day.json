@@ -2,7 +2,7 @@
     "download": {
         "interval": "1d",
         "period": "1y",
-        "is_download": true,
+        "is_download": false,
         "data_type": "day"
     },
     "supertrend": {
@@ -14,6 +14,11 @@
         "length": 200,
         "multiplier": 3.0,
         "use_vwma": true,
+        "intermediate": false
+    },
+    "seasonal": {
+        "season": "month",
+        "min_years": 2,
         "intermediate": false
     },
     "data": {

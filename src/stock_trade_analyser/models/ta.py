@@ -890,3 +890,132 @@ class FutureTrend:
             proj_index = bar_index[-1] + self.extend
             proj_price = self.future_price(x1, x2, y1, y2, proj_index)
         return proj_price
+
+
+class Seasonal:
+    """Seasonal analysis of historical stock returns.
+
+    For a given season bucket (month / quarter / week-of-year) the class
+    groups historical daily OHLC data into per-season returns and reports
+    the historical probability of the stock closing up vs down in that
+    same bucket. Only completed past occurrences are used for the
+    probability so the current, in-progress season does not bias the
+    statistic.
+    """
+
+    SEASON_MONTH = "month"
+    SEASON_QUARTER = "quarter"
+    SEASON_WEEK = "week"
+
+    def __init__(self, season: str = "month", min_years: int = 2):
+        logger.info("Initializing Seasonal")
+        self.season = season if season in (
+            self.SEASON_MONTH, self.SEASON_QUARTER, self.SEASON_WEEK
+        ) else self.SEASON_MONTH
+        self.min_years = max(1, int(min_years))
+
+    def _season_key(self, index: pd.DatetimeIndex):
+        if self.season == self.SEASON_QUARTER:
+            return index.year, index.quarter
+        if self.season == self.SEASON_WEEK:
+            iso = index.isocalendar()
+            return iso.year.values, iso.week.values
+        return index.year, index.month
+
+    def _current_bucket(self, index: pd.DatetimeIndex):
+        last = index[-1]
+        if self.season == self.SEASON_QUARTER:
+            return last.quarter
+        if self.season == self.SEASON_WEEK:
+            return int(last.isocalendar().week)
+        return last.month
+
+    def setup(self, ticker: str, data: pd.DataFrame) -> pd.DataFrame:
+        """Group data by (year, season bucket) and compute first/last close
+        and the percentage return for each bucket."""
+        logger.info(f"Starting Seasonal setup for {ticker}")
+        df = data.copy()
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
+
+        years, buckets = self._season_key(df.index)
+        df = df.assign(_year=years, _bucket=buckets)
+
+        grouped = df.groupby(['_year', '_bucket'], sort=True).agg(
+            start_close=('close', 'first'),
+            end_close=('close', 'last'),
+            start_date=('close', lambda s: s.index.min()),
+            end_date=('close', lambda s: s.index.max()),
+        ).reset_index()
+        grouped['return_pct'] = (
+            (grouped['end_close'] - grouped['start_close']) / grouped['start_close']
+        ) * 100
+        grouped['direction'] = np.where(grouped['return_pct'] >= 0, 'up', 'down')
+        logger.info(f"Finished Seasonal setup for {ticker}")
+        return grouped
+
+    def get_signal(self, ticker: str, data: pd.DataFrame, seasonal_data: pd.DataFrame) -> dict:
+        """Return the current-season summary row for the ticker.
+
+        Uses historical (past) occurrences of the same season bucket to
+        compute the probability of going up / down and combines it with
+        the current in-progress season's return so far.
+        """
+        logger.info(f"Starting Seasonal signal for {ticker}")
+        current_bucket = self._current_bucket(data.index)
+        current_year = data.index[-1].year
+
+        history = seasonal_data[
+            (seasonal_data['_bucket'] == current_bucket)
+            & (seasonal_data['_year'] < current_year)
+        ]
+
+        current_row = seasonal_data[
+            (seasonal_data['_bucket'] == current_bucket)
+            & (seasonal_data['_year'] == current_year)
+        ]
+
+        total = len(history)
+        up_count = int((history['return_pct'] >= 0).sum()) if total else 0
+        down_count = total - up_count
+
+        prob_up = round((up_count / total) * 100, 2) if total else None
+        prob_down = round((down_count / total) * 100, 2) if total else None
+        avg_return = round(history['return_pct'].mean(), 2) if total else None
+
+        current_return = None
+        current_direction = None
+        current_start_close = None
+        current_close = None
+        if len(current_row):
+            row = current_row.iloc[-1]
+            current_return = round(row['return_pct'], 2)
+            current_direction = row['direction']
+            current_start_close = row['start_close']
+            current_close = row['end_close']
+
+        if total < self.min_years:
+            signal = 0
+        elif prob_up is not None and prob_up >= 60:
+            signal = 1
+        elif prob_down is not None and prob_down >= 60:
+            signal = -1
+        else:
+            signal = 0
+
+        logger.info(f"Finished Seasonal signal for {ticker}")
+        return {
+            'season': self.season,
+            'current_bucket': current_bucket,
+            'history_years': total,
+            'up_count': up_count,
+            'down_count': down_count,
+            'prob_up': prob_up,
+            'prob_down': prob_down,
+            'avg_return_pct': avg_return,
+            'current_start_close': current_start_close,
+            'current_close': current_close,
+            'current_return_pct': current_return,
+            'current_direction': current_direction,
+            'signal': signal,
+        }

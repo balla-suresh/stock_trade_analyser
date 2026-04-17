@@ -41,6 +41,11 @@ python3 -m src.stock_trade_analyser.modules.stock_predictor
 python3 -m src.stock_trade_analyser.modules.machine_learning
 ```
 
+* **Seasonal**: Same calendar bucket (month, quarter, or week) historical up/down probabilities using `config/day.json`; results go to `predictions/day/seasonal*.csv`.
+```shell
+python3 -m src.stock_trade_analyser.modules.seasonal
+```
+
 ### Machine Learning
 The project leverages TensorFlow for deep learning models including:
 - Long Short-Term Memory (LSTM) networks
