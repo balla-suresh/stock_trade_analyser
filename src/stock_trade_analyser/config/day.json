@@ -2,7 +2,7 @@
     "download": {
         "interval": "1d",
         "period": "7y",
-        "is_download": false,
+        "is_download": true,
         "data_type": "day"
     },
     "supertrend": {
