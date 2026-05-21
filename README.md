@@ -26,12 +26,22 @@ pip install -r requirements/base.txt
 ### Trading Strategies
 The project includes several technical analysis strategies:
 
-* **Heikin Ashi**: Candlestick charting technique
+* **Heikin Ashi + Supertrend**: Heikin Ashi candlestick smoothing combined with the Supertrend trend-following indicator.
 ```shell
 python3 -m src.stock_trade_analyser.modules.heikin_ashi_supertrend
 ```
 
-* **Supertrend**: Trend-following indicator
+* **Fibonacci Bollinger Bands (FBB)**: Bollinger Bands plotted at Fibonacci retracement levels, used to flag buy/sell/partial signals.
+```shell
+python3 -m src.stock_trade_analyser.modules.FBB
+```
+
+* **Support / Resistance**: Detects key support and resistance levels per stock.
+```shell
+python3 -m src.stock_trade_analyser.modules.support_resistance
+```
+
+* **Stock Predictor**: LSTM-based next-day price forecaster (runs each ticker in parallel via `multiprocessing`).
 ```shell
 python3 -m src.stock_trade_analyser.modules.stock_predictor
 ```
@@ -46,6 +56,66 @@ python3 -m src.stock_trade_analyser.modules.machine_learning
 python3 -m src.stock_trade_analyser.modules.seasonal
 ```
 
+### Selecting a Ticker Universe (`--ticker-file`)
+
+Every module under `src/stock_trade_analyser/modules/` accepts a `--ticker-file` flag so you can target a specific subset of stocks (Nifty 50, a single sector, an ad-hoc list, etc.) without editing code.
+
+The value accepts three shapes:
+
+| Value | Resolved to |
+|---|---|
+| _omitted_ | `data/tickers.csv` (full universe, default) |
+| Bare filename, e.g. `tickers_50.csv` | `data/tickers_50.csv` |
+| Repo-relative path, e.g. `data/tickers_power.csv` | `data/tickers_power.csv` |
+| Absolute path, e.g. `/abs/path/my.csv` | as-is |
+
+A missing file raises a clear `FileNotFoundError` up front, and each module logs the resolved path at startup so you can verify which universe a run used.
+
+Examples:
+```shell
+# Default — runs against the full ~480-symbol list in data/tickers.csv
+python3 -m src.stock_trade_analyser.modules.FBB
+
+# Run FBB against the Nifty 50 only
+python3 -m src.stock_trade_analyser.modules.FBB --ticker-file tickers_50.csv
+
+# Run Heikin Ashi + Supertrend on just the IT sector
+python3 -m src.stock_trade_analyser.modules.heikin_ashi_supertrend \
+    --ticker-file tickers_information_technology.csv
+
+# Run the seasonal pipeline on a custom CSV anywhere on disk
+python3 -m src.stock_trade_analyser.modules.seasonal \
+    --ticker-file /tmp/my_watchlist.csv
+```
+
+### Ticker Files
+
+Pre-built ticker subsets live in `data/`. Each file is a one-symbol-per-line CSV using Yahoo Finance's `.NS` suffix for NSE-listed stocks, ready to be passed straight to `--ticker-file`.
+
+| File | Description |
+|---|---|
+| `tickers.csv` | Full universe (~480 NSE stocks + a couple of US tickers and the `^NSEI` index) |
+| `tickers_50.csv` | Current **Nifty 50** constituents |
+| `tickers_<sector>.csv` | Sector subsets (see below) |
+
+Sector files are generated from `tickers.csv` using NSE Indices' official 4-tier industry classification, merged from `ind_niftytotalmarket_list.csv`, Nifty 500, Microcap 250, Smallcap 250 and Midcap 150 (with manual fall-throughs for the long tail). Each NSE-listed symbol in `tickers.csv` belongs to exactly one sector file.
+
+Available sector files (counts in parentheses):
+
+| Sector file | # |   | Sector file | # |
+|---|---:|---|---|---:|
+| `tickers_financial_services.csv` | 81 |   | `tickers_services.csv` | 17 |
+| `tickers_capital_goods.csv` | 46 |   | `tickers_oil_gas_and_consumable_fuels.csv` | 16 |
+| `tickers_healthcare.csv` | 43 |   | `tickers_metals_and_mining.csv` | 13 |
+| `tickers_chemicals.csv` | 42 |   | `tickers_construction_materials.csv` | 13 |
+| `tickers_consumer_durables.csv` | 31 |   | `tickers_construction.csv` | 13 |
+| `tickers_automobile_and_auto_components.csv` | 31 |   | `tickers_realty.csv` | 12 |
+| `tickers_fast_moving_consumer_goods.csv` | 30 |   | `tickers_power.csv` | 11 |
+| `tickers_consumer_services.csv` | 28 |   | `tickers_telecommunication.csv` | 10 |
+| `tickers_information_technology.csv` | 24 |   | `tickers_textiles.csv` | 9 |
+| `tickers_media_entertainment_and_publication.csv` | 6 |   | `tickers_diversified.csv` | 3 |
+| `tickers_forest_materials.csv` | 2 |   |  |  |
+
 ### Machine Learning
 The project leverages TensorFlow for deep learning models including:
 - Long Short-Term Memory (LSTM) networks
@@ -59,11 +129,13 @@ The project leverages TensorFlow for deep learning models including:
 
 ## Project Structure
 ```
-src/stock_trade_analyser/
-├── config/          # Configuration files
-├── models/          # ML model definitions
-├── modules/         # Core trading modules
-└── tools/           # Utility functions
+stock_trade_analyser/
+├── data/                          # Ticker CSVs (full universe + Nifty 50 + per-sector)
+└── src/stock_trade_analyser/
+    ├── config/                    # Configuration files (day.json, intraday.json)
+    ├── models/                    # ML model definitions
+    ├── modules/                   # Core trading modules (each is a `python -m` entry point)
+    └── tools/                     # Utility functions (FileUtils, Downloader, logging)
 ```
 
 

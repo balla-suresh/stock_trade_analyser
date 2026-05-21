@@ -8,8 +8,13 @@ from stock_trade_analyser.models.ta import HeikinAshi
 from stock_trade_analyser.tools.log_utils import LoggerUtils
 import pandas as pd
 from stock_trade_analyser.tools.backtest import BackTest
-from stock_trade_analyser.tools.file_utils import FileUtils
+from stock_trade_analyser.tools.file_utils import FileUtils, parse_ticker_file_arg
 import datetime
+
+ticker_file_arg = parse_ticker_file_arg(
+    prog="heikin_ashi_supertrend",
+    description="Run the Heikin Ashi + SuperTrend strategy.",
+)
 
 with open(os.path.join(os.path.dirname(__file__), '..', 'config', 'day.json'), 'r') as f:
     config = json.load(f)
@@ -18,7 +23,11 @@ logger = None
 logger = LoggerUtils("super_trend").get_logger()
 logger.info("Started super_trend")
 
-file_utils = FileUtils(data_type=config["download"]["data_type"])
+file_utils = FileUtils(
+    data_type=config["download"]["data_type"],
+    ticker_file=ticker_file_arg,
+)
+logger.info(f"Using ticker file: {file_utils.ticker_file}")
 file_utils.clean()
 loader = Downloader(period=config["download"]["period"], interval=config["download"]
                    ["interval"], is_download=config["download"]["is_download"], file_utils=file_utils)

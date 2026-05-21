@@ -2,6 +2,7 @@ import os
 import shutil
 import logging
 import csv
+import argparse
 import pandas as pd
 from pathlib import Path
 import json
@@ -9,14 +10,67 @@ import json
 logger = logging.getLogger(__name__)
 
 
+def parse_ticker_file_arg(prog: str | None = None, description: str | None = None) -> str | None:
+    """Parse `--ticker-file` from `sys.argv` and return the raw value (or None).
+
+    Shared helper so every module in `modules/` exposes the same CLI surface
+    without duplicating argparse boilerplate. The returned value is passed
+    straight to `FileUtils(ticker_file=...)`, which handles resolution and
+    defaulting.
+    """
+    parser = argparse.ArgumentParser(
+        prog=prog,
+        description=description or "Stock trade analyser module.",
+    )
+    parser.add_argument(
+        "--ticker-file",
+        default=None,
+        help=(
+            "Ticker list CSV to use. Accepts a bare filename (resolved under "
+            "`data/`), a path relative to the repo root, or an absolute path. "
+            "Defaults to `data/tickers.csv`."
+        ),
+    )
+    args, _ = parser.parse_known_args()
+    return args.ticker_file
+
+
 class FileUtils:
-    def __init__(self, output: str = "output", predictions: str = "predictions", data_type: str = "day"):
+    def __init__(
+        self,
+        output: str = "output",
+        predictions: str = "predictions",
+        data_type: str = "day",
+        ticker_file: str | None = None,
+    ):
         self.ROOT_DIR = Path(__file__).parent.parent.parent.parent
         self.output = f"{self.ROOT_DIR}/{output}"
-        self.ticker_file = f"{self.ROOT_DIR}/data/tickers.csv"
+        self.ticker_file = self._resolve_ticker_file(ticker_file)
         self.tv_ticker_file = f"{self.ROOT_DIR}/data/tv_tickers.csv"
         self.predictions = f"{self.ROOT_DIR}/{predictions}"
         self.data_type = f"{data_type}"
+
+    def _resolve_ticker_file(self, ticker_file: str | None) -> str:
+        """Resolve `ticker_file` against the repo root when a relative path is given.
+
+        Accepts: None (defaults to `data/tickers.csv`), a bare filename
+        (looked up under `data/`), a path relative to the repo root, or an
+        absolute path. Raises FileNotFoundError if the resolved path is missing.
+        """
+        if ticker_file is None:
+            return f"{self.ROOT_DIR}/data/tickers.csv"
+
+        path = Path(ticker_file)
+        if path.is_absolute():
+            resolved = path
+        elif path.parent == Path(""):
+            resolved = self.ROOT_DIR / "data" / path
+        else:
+            resolved = self.ROOT_DIR / path
+
+        if not resolved.exists():
+            raise FileNotFoundError(f"Ticker file not found: {resolved}")
+        return str(resolved)
 
     def get_output(self):
         return self.output

@@ -16,12 +16,19 @@ from stock_trade_analyser.tools.data_utils import *
 from stock_trade_analyser.models.model import *
 from stock_trade_analyser.tools.log_utils import LoggerUtils
 from stock_trade_analyser.tools.downloader import Downloader
-from stock_trade_analyser.tools.file_utils import FileUtils
+from stock_trade_analyser.tools.file_utils import FileUtils, parse_ticker_file_arg
 
 import matplotlib.pyplot as plt
 import multiprocessing
 
 import json
+
+# Parsed at module top-level so multiprocessing `spawn` workers, which re-import
+# this module with the parent's argv, see the same `--ticker-file` value.
+_TICKER_FILE_ARG = parse_ticker_file_arg(
+    prog="stock_predictor",
+    description="Run the LSTM-based stock price predictor.",
+)
 
 with open(os.path.join(os.path.dirname(__file__), '..', 'config', 'day.json'), 'r') as f:
     config = json.load(f)
@@ -37,8 +44,10 @@ model = model.to(config["training"]["device"])
 
 def predict(each_ticker):
     logger = LoggerUtils("stock_predictor").get_logger()
-    file_utils = FileUtils(data_type=config["download"]["data_type"])
-    # each_ticker = ticker_list[0]
+    file_utils = FileUtils(
+        data_type=config["download"]["data_type"],
+        ticker_file=_TICKER_FILE_ARG,
+    )
     current_data = file_utils.import_csv(each_ticker)
     current_data = current_data.dropna()
     current_data = current_data.rename(columns=str.lower)
@@ -153,8 +162,12 @@ def predict(each_ticker):
 
 if __name__ == '__main__':
     logger = LoggerUtils("stock_predictor").get_logger()
-    file_utils = FileUtils(data_type=config["download"]["data_type"])
+    file_utils = FileUtils(
+        data_type=config["download"]["data_type"],
+        ticker_file=_TICKER_FILE_ARG,
+    )
     logger.info("Started Predicting")
+    logger.info(f"Using ticker file: {file_utils.ticker_file}")
     file_utils.clean()
     loader = Downloader(period=config["download"]["period"], interval=config["download"].get("interval", "1d"),
                     is_download=config["download"]["is_download"], file_utils=file_utils)

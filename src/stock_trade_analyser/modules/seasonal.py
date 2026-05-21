@@ -7,12 +7,17 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 import pandas as pd
 
 from stock_trade_analyser.tools.downloader import Downloader
-from stock_trade_analyser.tools.file_utils import FileUtils
+from stock_trade_analyser.tools.file_utils import FileUtils, parse_ticker_file_arg
 from stock_trade_analyser.tools.log_utils import LoggerUtils
 from stock_trade_analyser.models.ta import Seasonal
 
 
 def main() -> int:
+    ticker_file_arg = parse_ticker_file_arg(
+        prog="seasonal",
+        description="Run the seasonal analysis pipeline.",
+    )
+
     config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'day.json')
     with open(config_path, 'r') as f:
         config = json.load(f)
@@ -21,7 +26,11 @@ def main() -> int:
     logger.info("Started seasonal")
 
     seasonal_cfg = config.get("seasonal", {})
-    file_utils = FileUtils(data_type=config["download"]["data_type"])
+    file_utils = FileUtils(
+        data_type=config["download"]["data_type"],
+        ticker_file=ticker_file_arg,
+    )
+    logger.info("Using ticker file: %s", file_utils.ticker_file)
     if seasonal_cfg.get("clean_output", False):
         file_utils.clean()
 
