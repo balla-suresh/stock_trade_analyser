@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 from enum import Enum
 from datetime import datetime, timedelta
@@ -26,7 +27,8 @@ class Downloader:
 
     def __init__(self, downloader: str = "yahoo", period: str = '1y', interval: str = '1d',
                  is_threads: bool = True, is_download: bool = True, n_bars: int = 0,
-                 file_utils: FileUtils = FileUtils()):
+                 file_utils: FileUtils = FileUtils(), max_retries: int = 2,
+                 retry_pause: float = 2.0):
         self.period = '1y' if period is None else period
         self.interval = '1d' if interval is None else interval
         self.is_threads = is_threads
@@ -35,6 +37,8 @@ class Downloader:
         self.file_utils = file_utils
         self.n_bars = n_bars
         self.downloader = downloader
+        self.max_retries = max_retries
+        self.retry_pause = retry_pause
         try:
             username = os.environ['TV_USERNAME']
         except KeyError:
@@ -76,6 +80,8 @@ class Downloader:
             self.ticker_list = self.file_utils.current_ticker_list(self.ticker_list)
             return data
 
+        self._warm_yf_cache()
+
         new_tickers, existing_tickers = self.file_utils.split_ticker_list(self.ticker_list)
 
         backfill_data = self._yf_backfill(new_tickers)
@@ -95,14 +101,12 @@ class Downloader:
             logger.info("No new tickers to backfill")
             return None
         logger.info(f"Backfilling {len(new_tickers)} new tickers (period={self.period})")
-        new_data = yf.download(
-            tickers=new_tickers,
+        new_data = self._yf_download(
+            new_tickers,
             period=self.period,
             interval=self.interval,
-            group_by='ticker',
             auto_adjust=False,
             prepost=False,
-            threads=self.is_threads,
         )
         if new_data is None or new_data.empty:
             logger.info("Backfill returned no data")
@@ -134,23 +138,114 @@ class Downloader:
 
         logger.info(
             f"Incrementally updating {len(existing_tickers)} tickers "
-            f"from {start_date} to {today}"
+            f"for bars {start_date} to {today} inclusive "
+            f"(yfinance end-exclusive {end_date})"
         )
-        update_data = yf.download(
-            tickers=existing_tickers,
+        update_data = self._yf_download(
+            existing_tickers,
             start=start_date.isoformat(),
             end=end_date.isoformat(),
             interval=self.interval,
-            group_by='ticker',
             auto_adjust=False,
             prepost=False,
-            threads=self.is_threads,
         )
         if update_data is None or update_data.empty:
             logger.info("Incremental download returned no data")
             return None
         self.file_utils.append_all_csv(update_data, existing_tickers)
         return update_data
+
+    @staticmethod
+    def _warm_yf_cache():
+        """Initialise yfinance's tz/cookie SQLite caches on the main thread.
+
+        yfinance's threaded bulk download lets each worker lazily create and
+        connect the shared SQLite caches on first use. Concurrent first-time
+        init races on the same file and surfaces as
+        ``OperationalError('unable to open database file')`` for a chunk of
+        tickers (and a downstream ``TypeError`` when the timezone lookup then
+        returns ``None``). Touching the caches once, single-threaded, removes
+        the race. Best-effort: any failure here just falls back to yfinance's
+        own lazy init.
+        """
+        try:
+            from yfinance import cache as yf_cache
+        except Exception as err:  # pragma: no cover - import guard
+            logger.warning(f"Could not import yfinance cache for warm-up: {err}")
+            return
+        for getter in ("get_tz_cache", "get_cookie_cache"):
+            try:
+                handle = getattr(yf_cache, getter)()
+                if hasattr(handle, "initialise"):
+                    handle.initialise()
+            except Exception as err:
+                logger.warning(f"yfinance {getter} warm-up failed: {err}")
+
+    @staticmethod
+    def _split_by_ticker(data, tickers):
+        """Return ``{ticker: DataFrame}`` from a ``yf.download`` result.
+
+        Handles both the multi-ticker MultiIndex layout (``group_by='ticker'``)
+        and the single-level layout returned when only one ticker is fetched.
+        """
+        frames = {}
+        if data is None or data.empty:
+            return frames
+        if isinstance(data.columns, pd.MultiIndex):
+            available = set(data.columns.get_level_values(0))
+            for ticker in tickers:
+                if ticker in available:
+                    frames[ticker] = data[ticker]
+        elif len(tickers) == 1:
+            frames[tickers[0]] = data
+        return frames
+
+    def _yf_download(self, tickers, **kwargs):
+        """Download with retries for tickers that come back empty.
+
+        The first pass uses the configured threading; retries are forced
+        single-threaded (with a short pause) to dodge the transient empty
+        Yahoo responses and cache races that threaded bursts trigger. Results
+        are reassembled into a ``group_by='ticker'`` MultiIndex frame so the
+        rest of the pipeline is unaffected.
+        """
+        if not tickers:
+            return pd.DataFrame()
+
+        frames = {}
+        pending = list(tickers)
+        for attempt in range(self.max_retries + 1):
+            threads = self.is_threads if attempt == 0 else False
+            if attempt > 0:
+                logger.warning(
+                    f"Retrying {len(pending)} ticker(s) with no data "
+                    f"(attempt {attempt}/{self.max_retries}): {pending}"
+                )
+                time.sleep(self.retry_pause)
+            raw = yf.download(
+                tickers=pending,
+                group_by='ticker',
+                threads=threads,
+                **kwargs,
+            )
+            for ticker, frame in self._split_by_ticker(raw, pending).items():
+                if frame is not None and not frame.dropna().empty:
+                    frames[ticker] = frame
+            pending = [ticker for ticker in pending if ticker not in frames]
+            if not pending:
+                break
+
+        if pending:
+            logger.warning(
+                f"No data after {self.max_retries} retr"
+                f"{'y' if self.max_retries == 1 else 'ies'} for: {pending}"
+            )
+
+        if not frames:
+            return pd.DataFrame()
+        if len(tickers) == 1:
+            return frames.get(tickers[0], pd.DataFrame())
+        return pd.concat(frames, axis=1)
 
     def tv_download(self):
         """TradingView download with per-ticker incremental append.
