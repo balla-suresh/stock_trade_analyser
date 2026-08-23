@@ -19,9 +19,19 @@ class HeikinAshi:
 
         df_ha['close'] = (df_ha['old_open'] + df_ha['high'] + df_ha['low'] + df_ha['old_close']) / 4
         # df_ha.reset_index(inplace=True)
-        ha_open = [(df_ha['old_open'].iloc[0] + df_ha['old_close'].iloc[0]) / 2]
-        [ha_open.append((ha_open[i] + df_ha['close'].values[i]) / 2) \
-         for i in range(0, len(df_ha) - 1)]
+        # ha_open is a sequential recursion (each value depends on the prior
+        # one), so the loop stays -- but over NumPy scalars rather than
+        # `.iloc`/list-comprehension side effects. Values are unchanged.
+        ha_close = df_ha['close'].to_numpy(dtype='float64', copy=False)
+        n_ha = len(df_ha)
+        ha_open = np.empty(n_ha, dtype='float64')
+        if n_ha:
+            ha_open[0] = (
+                df_ha['old_open'].to_numpy(dtype='float64', copy=False)[0]
+                + df_ha['old_close'].to_numpy(dtype='float64', copy=False)[0]
+            ) / 2
+            for i in range(n_ha - 1):
+                ha_open[i + 1] = (ha_open[i] + ha_close[i]) / 2
         df_ha['open'] = ha_open
 
         # df_ha.set_index('index', inplace=True)
@@ -32,13 +42,10 @@ class HeikinAshi:
 
     def get_signal(self, data):
         logger.info(f"Starting signals Heikin Ashi")
-        ha_signals = []
-        for i in range(len(data)):
-            if data['open'].iloc[i] > data['close'].iloc[i]:
-                ha_signals.append(0)
-            else:
-                ha_signals.append(1)
-        data['position'] = ha_signals
+        # Vectorized: bearish candle (open > close) -> 0, otherwise 1.
+        data['position'] = np.where(
+            data['open'].to_numpy() > data['close'].to_numpy(), 0, 1
+        )
 
         logger.info(f"Finished signals Heikin Ashi")
         return data
@@ -73,133 +80,129 @@ class SuperTrend:
         upper_band = (hl_avg + self.multiplier * atr).dropna()
         lower_band = (hl_avg - self.multiplier * atr).dropna()
 
-        # FINAL UPPER BAND
+        # FINAL UPPER / LOWER BAND
+        #
+        # These recursions are inherently sequential (bar i depends on i-1), so
+        # the loop stays, but it now runs over plain NumPy arrays instead of
+        # `DataFrame.iloc` scalar access. That removes the per-element Series
+        # boxing that dominated the runtime while computing identical values.
+        ub = upper_band.to_numpy(dtype='float64', copy=False)
+        lb = lower_band.to_numpy(dtype='float64', copy=False)
+        # `close` is aligned to the band index (bands were produced by dropna()).
+        cl = close.reindex(upper_band.index).to_numpy(dtype='float64', copy=False)
+        n = len(ub)
 
-        final_bands = pd.DataFrame(index=upper_band.index, columns=['upper', 'lower'])  # type: ignore
-        final_bands.iloc[:, 0] = [x for x in upper_band - upper_band]
-        final_bands.iloc[:, 1] = final_bands.iloc[:, 0]
+        fb_upper = np.zeros(n, dtype='float64')
+        fb_lower = np.zeros(n, dtype='float64')
 
-        for i in range(len(final_bands)):
-            if i == 0:
-                final_bands.iloc[i, 0] = 0
+        for i in range(1, n):
+            if (ub[i] < fb_upper[i-1]) or (cl[i-1] > fb_upper[i-1]):
+                fb_upper[i] = ub[i]
             else:
-                if (upper_band.iloc[i] < final_bands.iloc[i-1, 0]) | (close.iloc[i-1] > final_bands.iloc[i-1, 0]):
-                    final_bands.iloc[i, 0] = upper_band.iloc[i]
-                else:
-                    final_bands.iloc[i, 0] = final_bands.iloc[i-1, 0]
+                fb_upper[i] = fb_upper[i-1]
 
-        # FINAL LOWER BAND
-
-        for i in range(len(final_bands)):
-            if i == 0:
-                final_bands.iloc[i, 1] = 0
+            if (lb[i] > fb_lower[i-1]) or (cl[i-1] < fb_lower[i-1]):
+                fb_lower[i] = lb[i]
             else:
-                if (lower_band.iloc[i] > final_bands.iloc[i-1, 1]) | (close.iloc[i-1] < final_bands.iloc[i-1, 1]):
-                    final_bands.iloc[i, 1] = lower_band.iloc[i]
-                else:
-                    final_bands.iloc[i, 1] = final_bands.iloc[i-1, 1]
+                fb_lower[i] = fb_lower[i-1]
+
+        final_bands = pd.DataFrame(
+            {'upper': fb_upper, 'lower': fb_lower}, index=upper_band.index
+        )
 
         # SUPERTREND
-        supertrend = pd.DataFrame(index=final_bands.index, columns=[f'supertrend_{self.lookback}'])  # type: ignore
-        supertrend.iloc[:, 0] = [
-            x for x in final_bands['upper'] - final_bands['upper']]
+        st_vals = np.zeros(n, dtype='float64')
+        for i in range(1, n):
+            prev = st_vals[i-1]
+            if prev == fb_upper[i-1]:
+                st_vals[i] = fb_upper[i] if cl[i] < fb_upper[i] else (
+                    fb_lower[i] if cl[i] > fb_upper[i] else prev)
+            elif prev == fb_lower[i-1]:
+                st_vals[i] = fb_lower[i] if cl[i] > fb_lower[i] else (
+                    fb_upper[i] if cl[i] < fb_lower[i] else prev)
+            else:
+                st_vals[i] = prev
 
-        for i in range(len(supertrend)):
-            if i == 0:
-                supertrend.iloc[i, 0] = 0
-            elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 0] and close.iloc[i] < final_bands.iloc[i, 0]:
-                supertrend.iloc[i, 0] = final_bands.iloc[i, 0]
-            elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 0] and close.iloc[i] > final_bands.iloc[i, 0]:
-                supertrend.iloc[i, 0] = final_bands.iloc[i, 1]
-            elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 1] and close.iloc[i] > final_bands.iloc[i, 1]:
-                supertrend.iloc[i, 0] = final_bands.iloc[i, 1]
-            elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 1] and close.iloc[i] < final_bands.iloc[i, 1]:
-                supertrend.iloc[i, 0] = final_bands.iloc[i, 0]
-
-        supertrend = supertrend.set_index(upper_band.index)
+        supertrend = pd.DataFrame(
+            {f'supertrend_{self.lookback}': st_vals}, index=upper_band.index
+        )
         supertrend = supertrend.dropna()[1:]
 
-        # ST UPTREND/DOWNTREND
-
-        upt = []
-        dt = []
+        # ST UPTREND/DOWNTREND (vectorized)
         close = close.iloc[len(close) - len(supertrend):]
+        st_arr = supertrend.iloc[:, 0].to_numpy(dtype='float64', copy=False)
+        cl_arr = close.to_numpy(dtype='float64', copy=False)
 
-        for i in range(len(supertrend)):
-            if close.iloc[i] > supertrend.iloc[i, 0]:
-                upt.append(supertrend.iloc[i, 0])
-                dt.append(np.nan)
-            elif close.iloc[i] < supertrend.iloc[i, 0]:
-                upt.append(np.nan)
-                dt.append(supertrend.iloc[i, 0])
-            else:
-                upt.append(np.nan)
-                dt.append(np.nan)
+        upt_arr = np.where(cl_arr > st_arr, st_arr, np.nan)
+        dt_arr = np.where(cl_arr < st_arr, st_arr, np.nan)
 
-        st, upt, dt, upper, lower = pd.Series(
-            supertrend.iloc[:, 0]), pd.Series(upt), pd.Series(dt), pd.Series(final_bands['upper']), pd.Series(final_bands['lower'])
-        upper = upper.iloc[1:]
-        lower = lower.iloc[1:]
-        
-        upt.index, dt.index, upper.index, lower.index = supertrend.index, supertrend.index, supertrend.index, supertrend.index
+        st = pd.Series(supertrend.iloc[:, 0])
+        upt = pd.Series(upt_arr, index=supertrend.index)
+        dt = pd.Series(dt_arr, index=supertrend.index)
+        upper = pd.Series(final_bands['upper']).iloc[1:]
+        lower = pd.Series(final_bands['lower']).iloc[1:]
+
+        upper.index, lower.index = supertrend.index, supertrend.index
         logger.info(f"Finished calculation of Supertrend for {ticker}")
         return st, upt, dt, upper, lower
 
     def implement_st_strategy(self, ticker, prices, st):
         logger.info(f"Starting Strategy for {ticker}")
-        buy_price = []
-        sell_price = []
-        st_signal = []
-        signal = 0
 
-        for i in range(len(st)):
-            if st.iloc[i-1] > prices.iloc[i-1] and st.iloc[i] < prices.iloc[i]:
+        px = prices.to_numpy(dtype='float64', copy=False)
+        stv = st.to_numpy(dtype='float64', copy=False)
+        n = len(stv)
+
+        # Crossover conditions are elementwise, so compute them in one pass.
+        # `np.roll` reproduces the original loop's `iloc[i-1]` indexing, which
+        # at i == 0 wraps around to the last bar. That wrap is preserved here
+        # deliberately so signals stay identical to the previous behaviour.
+        prev_st = np.roll(stv, 1)
+        prev_px = np.roll(px, 1)
+        cross_up = (prev_st > prev_px) & (stv < px)
+        cross_dn = (prev_st < prev_px) & (stv > px)
+
+        # Only the buy/sell alternation is sequential; iterate just the bars
+        # where a crossover actually fired instead of every bar.
+        st_signal = [0] * n
+        signal = 0
+        for idx in np.nonzero(cross_up | cross_dn)[0]:
+            if cross_up[idx]:
                 if signal != 1:
-                    buy_price.append(prices.iloc[i])
-                    sell_price.append(np.nan)
                     signal = 1
-                    st_signal.append(signal)
-                else:
-                    buy_price.append(np.nan)
-                    sell_price.append(np.nan)
-                    st_signal.append(0)
-            elif st.iloc[i-1] < prices.iloc[i-1] and st.iloc[i] > prices.iloc[i]:
-                if signal != -1:
-                    buy_price.append(np.nan)
-                    sell_price.append(prices.iloc[i])
-                    signal = -1
-                    st_signal.append(signal)
-                else:
-                    buy_price.append(np.nan)
-                    sell_price.append(np.nan)
-                    st_signal.append(0)
+                    st_signal[idx] = 1
             else:
-                buy_price.append(np.nan)
-                sell_price.append(np.nan)
-                st_signal.append(0)
+                if signal != -1:
+                    signal = -1
+                    st_signal[idx] = -1
 
         self.st_signal = st_signal
-        # return buy_price, sell_price, st_signal
         logger.info(f"Finished Strategy for {ticker}")
         return st_signal
 
     def get_signal(self, ticker, data):
         logger.info(f"Starting Position for {ticker}")
         self.implement_st_strategy(ticker, data['close'], data['st'])
-        position = []
-        for i in range(len(self.st_signal)):
-            if self.st_signal[i] > 1:
-                position.append(0)
-            else:
-                position.append(1)
-
-        for i in range(len(data['close'])):
-            if self.st_signal[i] == 1:
-                position[i] = 1
-            elif self.st_signal[i] == -1:
-                position[i] = 0
-            else:
-                position[i] = position[i-1]
+        # Position is a forward-fill of the buy/sell signals: 1 after a buy,
+        # 0 after a sell, carry the previous value otherwise.
+        #
+        # Two quirks of the original loops are preserved intentionally so
+        # output does not change: the pre-fill defaults every bar to 1 (its
+        # `st_signal[i] > 1` test can never be true, since signals are only
+        # -1/0/1), and bar 0 in the "carry" case reads `position[-1]`, i.e. the
+        # last element, which is still the default 1 at that point.
+        sig = np.asarray(self.st_signal)
+        n_sig = len(sig)
+        position = np.ones(n_sig, dtype='int64')
+        if n_sig:
+            carry = 1  # position[-1] as seen by i == 0 (pre-filled default)
+            for i in range(n_sig):
+                if sig[i] == 1:
+                    carry = 1
+                elif sig[i] == -1:
+                    carry = 0
+                position[i] = carry
+        position = position.tolist()
 
         close_price = data['close']
         st = data['st']
@@ -354,40 +357,45 @@ class FibonacciBollingerBands:
         if target_level is None or current_idx < lookback:
             return 0.5  # Default probability
         
-        # Look at historical touches of this level
-        reversal_count = 0
-        touch_count = 0
-        
-        # Get the level values
+        # Vectorized touch/reversal scan over the lookback window.
         level_values = df[target_level].iloc[max(0, current_idx-lookback):current_idx]
         prices = df['close'].iloc[max(0, current_idx-lookback):current_idx]
-        
-        # Check if price touched the level and then reversed
-        for i in range(1, len(prices)):
-            prev_price = prices.iloc[i-1]
-            curr_price = prices.iloc[i]
-            level_price = level_values.iloc[i]
-            
-            # Check if price crossed the level
+
+        px = prices.to_numpy(dtype='float64', copy=False)
+        lv = level_values.to_numpy(dtype='float64', copy=False)
+        n = len(px)
+        if n < 2:
+            touch_count = 0
+            reversal_count = 0
+        else:
+            # Crossings evaluated at i (1..n-1) against the level at i,
+            # mirroring the original loop's index alignment.
+            prev_px = px[:-1]
+            curr_px = px[1:]
+            lvl = lv[1:]
             if target_level.startswith('fbb_up'):
-                # For upper levels, check if price went above and then below
-                if prev_price <= level_price and curr_price > level_price:
-                    touch_count += 1
-                    # Check if it reversed (went back down) within next 5 days
-                    if i + 5 < len(prices):
-                        future_prices = prices.iloc[i:i+6]
-                        if future_prices.min() < level_price:
-                            reversal_count += 1
+                touch = (prev_px <= lvl) & (curr_px > lvl)
             else:
-                # For lower levels, check if price went below and then above
-                if prev_price >= level_price and curr_price < level_price:
-                    touch_count += 1
-                    # Check if it reversed (went back up) within next 5 days
-                    if i + 5 < len(prices):
-                        future_prices = prices.iloc[i:i+6]
-                        if future_prices.max() > level_price:
-                            reversal_count += 1
-        
+                touch = (prev_px >= lvl) & (curr_px < lvl)
+
+            idx = np.nonzero(touch)[0] + 1  # positions i in the window
+            touch_count = int(idx.size)
+
+            # A touch only counts as a reversal when a full 6-bar forward
+            # window exists (`i + 5 < n`), matching the original guard; touches
+            # too close to the window end stay in touch_count only.
+            eligible = idx[idx + 5 < n]
+            if eligible.size:
+                # rows of forward windows prices[i:i+6]
+                windows = px[eligible[:, None] + np.arange(6)]
+                lvl_at = lv[eligible]
+                if target_level.startswith('fbb_up'):
+                    reversal_count = int((windows.min(axis=1) < lvl_at).sum())
+                else:
+                    reversal_count = int((windows.max(axis=1) > lvl_at).sum())
+            else:
+                reversal_count = 0
+
         if touch_count > 0:
             return reversal_count / touch_count
         else:
@@ -739,47 +747,33 @@ class FibonacciBollingerBands:
         df['reversal_probability'] = None
         df['direction'] = None
         
-        # Signal logic: 
+        # Signal logic (vectorized):
         # - Full buy (1.0) when price touches or crosses fbb_low6 (extreme lower band)
         # - Partial buy (0.5) when price touches or crosses fbb_low5 (but not fbb_low6)
         # - Partial sell (-0.5) when price touches or crosses fbb_up6
-        # Priority: Full buy > Partial buy, so check fbb_low6 first
-        for i in range(1, len(df)):
-            close = df['close'].iloc[i]
-            prev_close = df['close'].iloc[i-1]
-            
-            # Check if price touched or crossed fbb_low6 (full buy signal - highest priority)
-            if 'fbb_low6' in df.columns:
-                low6 = df['fbb_low6'].iloc[i]
-                low6_prev = df['fbb_low6'].iloc[i-1] if i > 0 else low6
-                if not pd.isna(low6):
-                    # Price is at or below fbb_low6, or crossed from above
-                    if close <= low6 or (prev_close > low6_prev and close <= low6):
-                        df.loc[df.index[i], 'fbb_signal'] = 1.0  # Full buy
-                        continue  # Skip other checks if full buy signal
-            
-            # Check if price touched or crossed fbb_low5 (partial buy signal)
-            # Only set if not already a full buy
-            if 'fbb_low5' in df.columns:
-                low5 = df['fbb_low5'].iloc[i]
-                low5_prev = df['fbb_low5'].iloc[i-1] if i > 0 else low5
-                if not pd.isna(low5):
-                    # Price is at or below fbb_low5, or crossed from above
-                    if close <= low5 or (prev_close > low5_prev and close <= low5):
-                        # Only set partial buy if not already a full buy
-                        if df.loc[df.index[i], 'fbb_signal'] == 0.0:
-                            df.loc[df.index[i], 'fbb_signal'] = 0.5  # Partial buy
-            
-            # Check if price touched or crossed fbb_up6 (partial sell signal)
-            # This check is independent - price can't be at both levels simultaneously
-            if 'fbb_up6' in df.columns:
-                up6 = df['fbb_up6'].iloc[i]
-                up6_prev = df['fbb_up6'].iloc[i-1] if i > 0 else up6
-                if not pd.isna(up6):
-                    # Price is at or above fbb_up6, or crossed from below
-                    if close >= up6 or (prev_close < up6_prev and close >= up6):
-                        df.loc[df.index[i], 'fbb_signal'] = -0.5  # Partial sell
-        
+        # Priority: full buy > partial buy, so fbb_low6 is applied last and wins.
+        #
+        # The original row loop also OR-ed in a "crossed from above" term
+        # (`prev_close > level_prev and close <= level`); that is a subset of
+        # `close <= level`, so `A or (B and A)` collapses to `A` and the
+        # elementwise comparisons below are equivalent. Bar 0 is excluded to
+        # match the loop's `range(1, len(df))` start.
+        close = df['close']
+        active = np.zeros(len(df), dtype=bool)
+        active[1:] = True
+
+        if 'fbb_up6' in df.columns:
+            up6 = df['fbb_up6']
+            df.loc[active & up6.notna() & (close >= up6), 'fbb_signal'] = -0.5
+
+        if 'fbb_low5' in df.columns:
+            low5 = df['fbb_low5']
+            df.loc[active & low5.notna() & (close <= low5), 'fbb_signal'] = 0.5
+
+        if 'fbb_low6' in df.columns:
+            low6 = df['fbb_low6']
+            df.loc[active & low6.notna() & (close <= low6), 'fbb_signal'] = 1.0
+
         # Add prediction data to the last row
         if prediction:
             last_idx = len(df) - 1
