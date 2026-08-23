@@ -67,9 +67,10 @@ class Downloader:
         """Yahoo Finance download with smart incremental updates.
 
         - Tickers without an existing CSV: fetched with the configured `period`.
-        - Tickers with an existing CSV: fetched with `start = min(last_date)+1`
-          and `end = today+1` (yfinance treats `end` as exclusive). Per-ticker
-          dedup happens inside `FileUtils.append_csv`.
+        - Tickers with an existing CSV: grouped by their own last date, each
+          group fetched with `start = last_date+1` and `end = today+1`
+          (yfinance treats `end` as exclusive). Per-ticker dedup happens
+          inside `FileUtils.append_csv`.
         """
         logger.info("In yf Download")
         assert isinstance(self.interval, str)
@@ -115,6 +116,17 @@ class Downloader:
         return new_data
 
     def _yf_incremental(self, existing_tickers):
+        """Fetch only the missing bars for tickers that already have a CSV.
+
+        Tickers are grouped by their existing last date and each group is
+        downloaded over just the range it actually needs. Using a single
+        global `min(last_date)` instead would force every ticker to re-request
+        the widest gap in the universe: one halted or stale symbol (e.g. a
+        suspended stock stuck weeks back) made all ~479 tickers re-download a
+        month of bars they already had. Yahoo returns empty frames for those
+        redundant ranges, which then tripped the retry path and produced
+        several extra download passes per run.
+        """
         if not existing_tickers:
             logger.info("No existing tickers to incrementally update")
             return None
@@ -124,36 +136,58 @@ class Downloader:
             logger.info("No readable last dates; skipping incremental update")
             return None
 
-        min_last_date = min(last_dates.values())
-        start_date = (min_last_date + timedelta(days=1)).date()
-        today = datetime.now().date()
-        end_date = today + timedelta(days=1)
+        symbol_of = {}
+        for ticker in existing_tickers:
+            symbol = ticker['symbol'] if isinstance(ticker, dict) else ticker
+            symbol_of.setdefault(symbol, ticker)
 
-        if start_date > today:
+        today = datetime.now().date()
+
+        # Group tickers that share the same "resume from" date.
+        groups = {}
+        for symbol, last_date in last_dates.items():
+            start_date = (last_date + timedelta(days=1)).date()
+            if start_date > today:
+                continue
+            groups.setdefault(start_date, []).append(symbol_of[symbol])
+
+        if not groups:
+            current = max(last_dates.values()).date()
             logger.info(
-                f"Existing tickers already current (last={min_last_date.date()}); "
+                f"Existing tickers already current (last={current}); "
                 f"skipping incremental download"
             )
             return None
 
-        logger.info(
-            f"Incrementally updating {len(existing_tickers)} tickers "
-            f"for bars {start_date} to {today} inclusive "
-            f"(yfinance end-exclusive {end_date})"
-        )
-        update_data = self._yf_download(
-            existing_tickers,
-            start=start_date.isoformat(),
-            end=end_date.isoformat(),
-            interval=self.interval,
-            auto_adjust=False,
-            prepost=False,
-        )
-        if update_data is None or update_data.empty:
+        end_date = today + timedelta(days=1)
+        frames = []
+        for start_date in sorted(groups):
+            batch = groups[start_date]
+            logger.info(
+                f"Incrementally updating {len(batch)} ticker(s) "
+                f"for bars {start_date} to {today} inclusive "
+                f"(yfinance end-exclusive {end_date})"
+            )
+            batch_data = self._yf_download(
+                batch,
+                start=start_date.isoformat(),
+                end=end_date.isoformat(),
+                interval=self.interval,
+                auto_adjust=False,
+                prepost=False,
+            )
+            if batch_data is None or batch_data.empty:
+                logger.info(f"Incremental download returned no data for {start_date} batch")
+                continue
+            self.file_utils.append_all_csv(batch_data, batch)
+            frames.append(batch_data)
+
+        if not frames:
             logger.info("Incremental download returned no data")
             return None
-        self.file_utils.append_all_csv(update_data, existing_tickers)
-        return update_data
+        if len(frames) == 1:
+            return frames[0]
+        return pd.concat(frames, axis=1)
 
     @staticmethod
     def _warm_yf_cache():
@@ -226,6 +260,7 @@ class Downloader:
                 tickers=pending,
                 group_by='ticker',
                 threads=threads,
+                progress=False,
                 **kwargs,
             )
             for ticker, frame in self._split_by_ticker(raw, pending).items():
