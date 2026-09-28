@@ -3,23 +3,19 @@
 A comprehensive stock market analysis tool that implements various trading strategies and machine learning models for stock prediction.
 
 ## Prerequisites
-* Python 3.11+ (recommended for TensorFlow compatibility)
+* Python 3.12+ (required for pandas-ta and TensorFlow compatibility)
 * Internet access to download stock data
 * For Apple Silicon Macs: TensorFlow with Metal acceleration support
+* `virtualenvwrapper` installed and configured (for `mkvirtualenv` and `workon` commands)
 
 ## Setup
 
-### 1. Create Virtual Environment
+### 1. Create Virtual Environment and Install Dependencies
 ```shell
-make venv
+make setup
 ```
 
-### 2. Install Dependencies
-```shell
-pip install -r requirements/base.txt
-```
-
-**Note for Apple Silicon Mac users:** If you encounter TensorFlow installation issues with Python 3.13, consider using Python 3.11 or 3.12 for better compatibility.
+**Note for Apple Silicon Mac users:** If you encounter TensorFlow installation issues with Python 3.13, consider using Python 3.12 for better compatibility. The `Makefile` uses `python3.12` by default.
 
 ## Features
 
@@ -28,37 +24,37 @@ The project includes several technical analysis strategies:
 
 * **Heikin Ashi + Supertrend**: Heikin Ashi candlestick smoothing combined with the Supertrend trend-following indicator.
 ```shell
-python3 -m src.stock_trade_analyser.modules.heikin_ashi_supertrend
+make run-heikin-ashi
 ```
 
 * **Fibonacci Bollinger Bands (FBB)**: Bollinger Bands plotted at Fibonacci retracement levels, used to flag buy/sell/partial signals.
 ```shell
-python3 -m src.stock_trade_analyser.modules.FBB
+make run-fbb
 ```
 
 * **Support / Resistance**: Detects key support and resistance levels per stock.
 ```shell
-python3 -m src.stock_trade_analyser.modules.support_resistance
+make run-support-resistance
 ```
 
 * **Stock Predictor**: LSTM-based next-day price forecaster (runs each ticker in parallel via `multiprocessing`).
 ```shell
-python3 -m src.stock_trade_analyser.modules.stock_predictor
+make run-stock-predictor
 ```
 
 * **Machine Learning Models**: LSTM, GRU, and MLP for stock prediction
 ```shell
-python3 -m src.stock_trade_analyser.modules.machine_learning
+make run-machine-learning
 ```
 
 * **Seasonal**: For each stock, computes the % price increase of each calendar quarter (Q1..Q4) in every historical year, averages those per-quarter returns across years (excluding the last bar’s calendar quarter so an in-progress quarter does not bias the averages), then ranks the four quarters 1..4 where **1 = worst** and **4 = best**. The output CSV lists all four quarter ratings plus `current_quarter_rating`, sorted ascending on that column. Set `seasonal.clean_output` to `true` in `config/day.json` if you want the same directory clean as other modules. Results go to `predictions/day/seasonal.csv`.
 ```shell
-python3 -m src.stock_trade_analyser.modules.seasonal
+make run-seasonal
 ```
 
 ### Selecting a Ticker Universe (`--ticker-file`)
 
-Every module under `src/stock_trade_analyser/modules/` accepts a `--ticker-file` flag so you can target a specific subset of stocks (Nifty 50, a single sector, an ad-hoc list, etc.) without editing code.
+Every module under `src/stock_trade_analyser/modules/` accepts a `--ticker-file` flag so you can target a specific subset of stocks (Nifty 50, a single sector, an ad-hoc list, etc.) without editing code. You can pass arguments to the `make` commands using the `ARGS` variable.
 
 The value accepts three shapes:
 
@@ -74,18 +70,16 @@ A missing file raises a clear `FileNotFoundError` up front, and each module logs
 Examples:
 ```shell
 # Default — runs against the full ~480-symbol list in data/tickers.csv
-python3 -m src.stock_trade_analyser.modules.FBB
+make run-fbb
 
 # Run FBB against the Nifty 50 only
-python3 -m src.stock_trade_analyser.modules.FBB --ticker-file tickers_50.csv
+make run-fbb ARGS="--ticker-file tickers_50.csv"
 
 # Run Heikin Ashi + Supertrend on just the IT sector
-python3 -m src.stock_trade_analyser.modules.heikin_ashi_supertrend \
-    --ticker-file tickers_information_technology.csv
+make run-heikin-ashi ARGS="--ticker-file tickers_information_technology.csv"
 
 # Run the seasonal pipeline on a custom CSV anywhere on disk
-python3 -m src.stock_trade_analyser.modules.seasonal \
-    --ticker-file /tmp/my_watchlist.csv
+make run-seasonal ARGS="--ticker-file /tmp/my_watchlist.csv"
 ```
 
 ### Ticker Files
@@ -137,5 +131,3 @@ stock_trade_analyser/
     ├── modules/                   # Core trading modules (each is a `python -m` entry point)
     └── tools/                     # Utility functions (FileUtils, Downloader, logging)
 ```
-
-
