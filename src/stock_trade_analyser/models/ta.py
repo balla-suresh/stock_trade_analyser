@@ -349,145 +349,95 @@ class FibonacciBollingerBands:
         
         logger.info("Finished calculating Fibonacci Bollinger Bands")
         return df
+        
+    def get_band(self, price, row):
+        if pd.isna(price) or pd.isna(row['fbb_mid']):
+            return "unknown"
+        
+        if price >= row['fbb_up6']: return "above_up6"
+        if price >= row['fbb_up5']: return "up5_up6"
+        if price >= row['fbb_up4']: return "up4_up5"
+        if price >= row['fbb_up3']: return "up3_up4"
+        if price >= row['fbb_up2']: return "up2_up3"
+        if price >= row['fbb_up1']: return "up1_up2"
+        if price >= row['fbb_mid']: return "mid_up1"
+        
+        if price >= row['fbb_low1']: return "low1_mid"
+        if price >= row['fbb_low2']: return "low2_low1"
+        if price >= row['fbb_low3']: return "low3_low2"
+        if price >= row['fbb_low4']: return "low4_low3"
+        if price >= row['fbb_low5']: return "low5_low4"
+        if price >= row['fbb_low6']: return "low6_low5"
+        return "below_low6"
 
-    def _band_position(self, df):
-        """Where the close sits inside the fbb_low6..fbb_up6 envelope.
+    def get_signal(self, trend, band):
+        if band == "above_up6":
+            return "SELL"
+        elif band == "up5_up6":
+            return "BUY_WATCH" if trend == 1 else "SELL"
+        elif band in ["up4_up5", "up3_up4", "up2_up3", "up1_up2"]:
+            return "BUY_WATCH" if trend == 1 else "WAIT"
+        elif band == "mid_up1":
+            return "BUY" if trend == 1 else "WAIT"
+        elif band == "low1_mid":
+            return "WAIT" if trend == 1 else "SELL"
+        elif band in ["low2_low1", "low3_low2", "low4_low3", "low5_low4"]:
+            return "WAIT" if trend == 1 else "SELL_WATCH"
+        elif band == "low6_low5":
+            return "BUY" if trend == 1 else "SELL_WATCH"
+        elif band == "below_low6":
+            return "BUY"
+        return "WAIT"
 
-        Returns a float Series in (roughly) 0..100: 0 = at the lower band,
-        50 = midway, 100 = at the upper band. Values can exceed the range when
-        price trades outside the bands. NaN until the bands warm up.
-
-        This is the continuous version of the old binary "is close >= up6"
-        test. It is what separates a genuinely mid-range name from one sitting
-        a fraction of a percent under the upper band -- both of which the
-        previous logic reported identically as "wait".
+    def get_metrics(self, df):
         """
-        if 'fbb_low6' not in df.columns or 'fbb_up6' not in df.columns:
-            return pd.Series(np.nan, index=df.index)
-        lo = df['fbb_low6'].to_numpy(dtype='float64', copy=False)
-        up = df['fbb_up6'].to_numpy(dtype='float64', copy=False)
-        c = df['close'].to_numpy(dtype='float64', copy=False)
-        width = up - lo
-        with np.errstate(invalid='ignore', divide='ignore'):
-            pos = np.where(width > 0, (c - lo) / width * 100.0, np.nan)
-        return pd.Series(pos, index=df.index)
-
-    def get_signal(self, ticker, data, position_lookback: int = 10,
-                   upper_watch: float = 95.0, lower_watch: float = 5.0):
-        """Graded, trend-aware FBB signals.
-
-        Signal values
-        -------------
-          1.0   strong buy   -- closed back *above* fbb_low6 after being below
-          0.5   weak buy     -- currently at/below fbb_low6 (not yet turned up)
-          0.25  buy watch    -- band_position <= lower_watch and falling
-         -0.25  momentum watch -- band_position >= upper_watch and rising
-         -0.5   momentum     -- close at/above fbb_up6
-          0.0   wait         -- mid-range, no edge
-
-        Why graded instead of a single threshold: a hard `close >= fbb_up6`
-        test has no memory and no notion of proximity, so a name that spent
-        days above the band and then closed 0.2% under it was reported as
-        plain "wait", indistinguishable from a name sitting mid-envelope.
-
-        Measured over 478 NSE tickers / ~786k daily bars, 21-day forward
-        return against the unconditional base rate of +2.08%:
-
-          close >= up6                        +3.72%  (55.2% win)  +1.63pp
-          band_position >= 95 and rising      +3.48%  (56.0% win)  +1.39pp
-          band_position >= 95                 +3.36%  (55.9% win)  +1.28pp
-          closed back above low6              +2.95%  (60.4% win)  +0.86pp
-          at/below low6                       +2.90%  (58.3% win)  +0.82pp
-          band_position 40-60 (mid-range)     +1.84%  (53.2% win)  -0.24pp
-
-        The mid-range bucket underperforms the base rate, which is why it
-        stays 0.0. The `and rising` trend filter measurably improves the
-        band_position tier (+1.28 -> +1.39pp), so direction of travel is
-        used rather than proximity alone.
-
-        Columns added
-        -------------
-          fbb_signal      graded signal above
-          band_position   0..100 position inside the low6..up6 envelope
-          pos_trend       change in band_position over `position_lookback` bars
-          bars_since_up6  bars since close was last at/above fbb_up6 (NaN=never)
-          pct_to_up6      % move required to reach fbb_up6 (negative = above it)
-          pct_to_low6     % move required to reach fbb_low6 (negative = below)
+        Calculates trend, band, signal, target price, and estimated days to target
+        based on the calculated FBB data.
         """
-        logger.info(f"Getting FBB signals for {ticker}")
+        # Add a 20-day SMA to determine the trend
+        df['sma_20'] = df['close'].rolling(window=20).mean()
+        
+        # Get the last two rows
+        last_row = df.iloc[-1]
+        prev_row = df.iloc[-2] if len(df) > 1 else last_row
+        
+        current_price = last_row['close']
+        
+        # Trend: 1 for up (20-day SMA rising), 0 for down (20-day SMA falling)
+        trend = 1 if last_row['sma_20'] > prev_row['sma_20'] else 0
+        
+        band = self.get_band(current_price, last_row)
+        signal = self.get_signal(trend, band)
 
-        df = data.copy()
-        n = len(df)
-
-        pos = self._band_position(df)
-        pos_arr = pos.to_numpy(dtype='float64', copy=False)
-
-        # Trend of the position itself: is price working toward a band or away?
-        pos_trend = pos.diff(position_lookback)
-        trend_arr = pos_trend.to_numpy(dtype='float64', copy=False)
-
-        close = df['close']
-        c = close.to_numpy(dtype='float64', copy=False)
-
-        # Bars since price last closed at/above fbb_up6.
-        bars_since = np.full(n, np.nan)
-        if 'fbb_up6' in df.columns:
-            up6 = df['fbb_up6'].to_numpy(dtype='float64', copy=False)
-            above6 = ~np.isnan(up6) & (c >= up6)
-            last = -1
-            for k in range(n):
-                if above6[k]:
-                    last = k
-                if last >= 0:
-                    bars_since[k] = k - last
+        # Calculate target and estimated days
+        fbb_mid = last_row['fbb_mid']
+        if trend == 1:
+            target_price = last_row['fbb_up6'] if current_price >= fbb_mid else fbb_mid
         else:
-            above6 = np.zeros(n, dtype=bool)
+            target_price = last_row['fbb_low6'] if current_price <= fbb_mid else fbb_mid
 
-        below6 = np.zeros(n, dtype=bool)
-        if 'fbb_low6' in df.columns:
-            low6 = df['fbb_low6'].to_numpy(dtype='float64', copy=False)
-            below6 = ~np.isnan(low6) & (c <= low6)
+        pct_to_target = 0
+        est_days = -1
+        if pd.notna(target_price) and current_price > 0:
+            pct_to_target = (target_price - current_price) / current_price
+            
+            # Calculate historical drift (mean daily return)
+            daily_returns = df['close'].pct_change().dropna()
+            drift = daily_returns.mean()
+            
+            if drift != 0:
+                est_days = int(round(abs(pct_to_target) / abs(drift)))
 
-        active = np.zeros(n, dtype=bool)
-        active[1:] = True
+        return {
+            'close': round(current_price, 2),
+            'trend': trend,
+            'band': band,
+            'signal': signal,
+            'target_price': round(target_price, 2) if pd.notna(target_price) else None,
+            'pct_to_target': round(pct_to_target * 100, 2),
+            'est_days': est_days
+        }
 
-        signal = np.zeros(n, dtype='float64')
-
-        # Compare on the same rounded values that get reported in the
-        # `pos_trend` column, so a row never shows a flat 0.0 trend while
-        # having been classified as rising/falling on an invisible fraction.
-        trend_shown = np.round(trend_arr, 1)
-        rising = ~np.isnan(trend_shown) & (trend_shown > 0)
-        falling = ~np.isnan(trend_shown) & (trend_shown < 0)
-        have_pos = ~np.isnan(pos_arr)
-
-        # Watch tiers first; the hard band touches below override them.
-        signal[active & have_pos & (pos_arr <= lower_watch) & falling] = 0.25
-        signal[active & have_pos & (pos_arr >= upper_watch) & rising] = -0.25
-
-        # Hard touches.
-        signal[active & above6] = -0.5
-        signal[active & below6] = 0.5
-
-        # Best-performing entry: first close back above low6 after being below.
-        exited = np.zeros(n, dtype=bool)
-        exited[1:] = below6[:-1] & ~below6[1:]
-        signal[active & exited] = 1.0
-
-        df['fbb_signal'] = signal
-        df['band_position'] = np.round(pos_arr, 1)
-        df['pos_trend'] = trend_shown
-        df['bars_since_up6'] = bars_since
-
-        if 'fbb_up6' in df.columns:
-            up6s = df['fbb_up6']
-            df['pct_to_up6'] = ((up6s - close) / close * 100).round(2)
-        if 'fbb_low6' in df.columns:
-            low6s = df['fbb_low6']
-            df['pct_to_low6'] = ((close - low6s) / close * 100).round(2)
-
-        logger.info(f"Finished getting FBB signals for {ticker}")
-        return df
 
 
 class ZigZag:
