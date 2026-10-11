@@ -1,7 +1,7 @@
 PYTHON_VERSION ?= python3.12
 ARGS ?=
 
-.PHONY: setup run-heikin-ashi run-fbb run-support-resistance run-stock-predictor run-machine-learning run-seasonal clean
+.PHONY: setup run-heikin-ashi run-fbb run-support-resistance run-stock-predictor run-machine-learning run-seasonal clean distclean
 
 setup:
 	@echo "Creating virtual environment 'trade' using $(PYTHON_VERSION)..."
@@ -29,6 +29,12 @@ run-seasonal:
 	@zsh -i -c "workon trade && python -m src.stock_trade_analyser.modules.seasonal $(ARGS)"
 
 clean:
+	@echo "Cleaning up python cache files..."
+	rm -rf output predictions logs
+	find . -type d -name "__pycache__" -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete
+	rm -rf *.egg-info
+distclean:
 	@echo "Removing virtual environment 'trade' and cleaning up python cache files..."
 	@zsh -i -c "rmvirtualenv trade"
 	rm -rf output predictions logs

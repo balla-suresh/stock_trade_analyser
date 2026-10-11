@@ -1,5 +1,6 @@
 import sys
 import os
+import copy
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 import torch
 import pandas as pd
@@ -57,8 +58,12 @@ def predict(each_ticker):
     # normalize
     normalized_data_close_price = scaler.fit_transform(data_close_price)
 
-    split_index, data_x_train, data_y_train, data_x_val, data_y_val, data_x_unseen = prepare_data(
-        normalized_data_close_price, config)
+    prepared = prepare_data(normalized_data_close_price, config)
+    if prepared is None:
+        logger.warning(f"{each_ticker}: Not enough data points for window size {config['data']['window_size']}")
+        return {each_ticker: []}
+        
+    split_index, data_x_train, data_y_train, data_x_val, data_y_val, data_x_unseen = prepared
 
     dataset_train = TimeSeriesDataset(data_x_train, data_y_train)
     dataset_val = TimeSeriesDataset(data_x_val, data_y_val)
@@ -82,8 +87,12 @@ def predict(each_ticker):
         optimizer, step_size=config["training"]["scheduler_step_size"], gamma=0.1)
 
     # begin training
+    best_model_state = None
     if config["download"]["is_download"]:
         min_loss = np.inf
+        epochs_no_improve = 0
+        patience = 15  # Early stopping patience
+        
         for epoch in range(config["training"]["num_epoch"]):
             loss_train, lr_train = run_epoch(
                 model, optimizer, criterion, scheduler, config, train_dataloader, is_training=True)
@@ -98,8 +107,14 @@ def predict(each_ticker):
                 logger.debug(
                     '     New Minimum Loss: {:.10f} ----> {:.10f}\n'.format(min_loss, loss_train))
                 min_loss = loss_train
-                torch.save(model.state_dict(),
-                           file_utils.get_predictions() + '/' + file_utils.get_data_type() + '/' +  each_ticker + '.pt')
+                best_model_state = copy.deepcopy(model.state_dict())
+                epochs_no_improve = 0
+            else:
+                epochs_no_improve += 1
+                
+            if epochs_no_improve >= patience:
+                logger.debug(f"{each_ticker}: Early stopping triggered at epoch {epoch + 1}")
+                break
 
     # here we re-initialize dataloader so the data doesn't shuffled, so we can plot the values by date
 
@@ -110,30 +125,18 @@ def predict(each_ticker):
 
     best_model = LSTM(input_size=config["model"]["input_size"], hidden_layer_size=config["model"]
     ["lstm_size"], num_layers=config["model"]["num_lstm_layers"], output_size=1)
-    best_model.load_state_dict(torch.load(
-        file_utils.get_predictions() + '/' + file_utils.get_data_type() + '/' + each_ticker + '.pt'))
+    
+    if best_model_state is not None:
+        best_model.load_state_dict(best_model_state)
+    else:
+        # Fallback if not training (e.g. is_download is False) and we still want to try loading from disk
+        pt_path = file_utils.get_predictions() + '/' + file_utils.get_data_type() + '/' + each_ticker + '.pt'
+        if os.path.exists(pt_path):
+            best_model.load_state_dict(torch.load(pt_path))
+        else:
+            best_model.load_state_dict(model.state_dict())
 
     best_model.eval()
-
-    # predict on the training data, to see how well the model managed to learn and memorize
-
-    predicted_train = np.array([])
-
-    for idx, (x, y) in enumerate(train_dataloader):
-        x = x.to(config["training"]["device"])
-        out = best_model(x)
-        out = out.cpu().detach().numpy()
-        predicted_train = np.concatenate((predicted_train, out))
-
-    # predict on the validation data, to see how the model does
-
-    predicted_val = np.array([])
-
-    for idx, (x, y) in enumerate(val_dataloader):
-        x = x.to(config["training"]["device"])
-        out = best_model(x)
-        out = out.cpu().detach().numpy()
-        predicted_val = np.concatenate((predicted_val, out))
 
     # predict on the unseen data, tomorrow's price
 
@@ -142,6 +145,11 @@ def predict(each_ticker):
     predictions = np.array([])
     dicts = []
     curr_date = current_data.index[-1]
+    
+    # We must ensure data_x_unseen is a numpy array before tensor conversion
+    if not isinstance(data_x_unseen, np.ndarray):
+        data_x_unseen = np.array(data_x_unseen)
+        
     for i in range(x_future):
         x = torch.tensor(data_x_unseen).float().to(config["training"]["device"]).unsqueeze(
             0).unsqueeze(2)  # this is the data type and shape required, [batch, sequence, feature]
@@ -151,8 +159,11 @@ def predict(each_ticker):
         data_x_unseen = data_x_unseen[1:]
         data_x_unseen = np.append(data_x_unseen, prediction)
         prediction = scaler.inverse_transform(prediction)[0]
+        # Make sure we extract the scalar value if it's an array
+        if isinstance(prediction, np.ndarray):
+            prediction = prediction.item()
         curr_date = curr_date + timedelta(days=1)
-        dicts.append({'Predictions': prediction, "Date": str(curr_date)})
+        dicts.append({'Predictions': float(prediction), "Date": str(curr_date)})
 
     logger.debug(
         f"{each_ticker}: Predicted close price of the next days: {dicts}")
@@ -177,10 +188,51 @@ if __name__ == '__main__':
 
     # df = pd.DataFrame(ticker_list, columns=['symbol'])
     # df = df.set_index('symbol')
+    
+    # We must unpack the ticker_list properly if it's a list of dicts
+    clean_ticker_list = []
+    for t in ticker_list:
+        if isinstance(t, dict):
+            clean_ticker_list.append(t['symbol'])
+        else:
+            clean_ticker_list.append(t)
+            
     with multiprocessing.Pool() as pool:
-        outputs_async = pool.map_async(predict, ticker_list)
+        outputs_async = pool.map_async(predict, clean_ticker_list)
         outputs = outputs_async.get()
+        
+    # outputs is a list of dicts, e.g. [{'AAPL': [...]}, {'MSFT': [...]}]
+    # We need to merge them into a single dict before writing to JSON
+    merged_outputs = {}
+    for output in outputs:
+        if output and isinstance(output, dict):
+            # Ensure all float32/float64 are converted to standard float for JSON serialization
+            for ticker, preds in output.items():
+                if not preds:
+                    continue
+                clean_preds = []
+                for p in preds:
+                    # Handle both dict and float formats
+                    if isinstance(p, dict):
+                        clean_preds.append({
+                            'Predictions': float(p['Predictions']),
+                            'Date': str(p['Date'])
+                        })
+                    else:
+                        clean_preds.append(float(p))
+                merged_outputs[ticker] = clean_preds
+                
+    if not merged_outputs:
+        logger.warning("merged_outputs is empty! Check if predict() is returning data.")
+            
     # logger.info("Output: {}".format(outputs))
     # logger.info(json.dumps(outputs, indent = 3))
-    file_utils.write_json(outputs, "final.json")
-    logger.info("Finished Predicting")
+    
+    # Write directly to predictions folder
+    predictions_dir = file_utils.get_predictions()
+    os.makedirs(predictions_dir, exist_ok=True)
+    path = os.path.join(predictions_dir, 'final.json')
+    
+    with open(path, 'w') as f:
+        json.dump(merged_outputs, f, indent=4)
+    logger.info(f"Finished Predicting, saved to {path}")

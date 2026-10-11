@@ -21,8 +21,12 @@ def prepare_data_y(x, window_size):
     return output
 
 def prepare_data(normalized_data_close_price, config):
-    data_x, data_x_unseen = prepare_data_x(normalized_data_close_price, window_size=config["data"]["window_size"])
-    data_y = prepare_data_y(normalized_data_close_price, window_size=config["data"]["window_size"])
+    window_size = config["data"]["window_size"]
+    if normalized_data_close_price.shape[0] <= window_size:
+        return None
+        
+    data_x, data_x_unseen = prepare_data_x(normalized_data_close_price, window_size=window_size)
+    data_y = prepare_data_y(normalized_data_close_price, window_size=window_size)
 
     # split dataset
 
