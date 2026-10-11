@@ -225,17 +225,20 @@ class SuperTrend:
 
 class SupportResistance:
     def get_optimum_clusters(self, df, saturation_point=0.01):
-        wcss = []
-        k_models = []
-        dates = []
-
-        size = min(11, len(df.index))
-        for i in range(1, size):
-            kmeans = KMeans(n_clusters=i, init='k-means++',
-                            max_iter=300, n_init=10, random_state=0)  # type: ignore
-            kmeans.fit(df)
-            wcss.append(kmeans.inertia_)
-            k_models.append(kmeans)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            wcss = []
+            k_models = []
+            dates = []
+    
+            size = min(11, len(df.index))
+            for i in range(1, size):
+                kmeans = KMeans(n_clusters=i, init='k-means++',
+                                max_iter=300, n_init=10, random_state=0)  # type: ignore
+                kmeans.fit(df)
+                wcss.append(kmeans.inertia_)
+                k_models.append(kmeans)
 
         # Compare differences in inertias until it's no more than saturation_point
         optimum_k = len(wcss)-1
