@@ -8,7 +8,7 @@ import yfinance as yf
 import pandas as pd
 from tvDatafeed import TvDatafeed, Interval
 
-from stock_trade_analyser.tools.file_utils import FileUtils
+from .file_utils import FileUtils
 
 logger = logging.getLogger(__name__)
 

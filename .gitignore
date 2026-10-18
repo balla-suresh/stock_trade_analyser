@@ -160,4 +160,5 @@ cython_debug/
 
 output/
 predictions/
+backtests/
 .DS_Store

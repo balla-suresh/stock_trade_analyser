@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 def parse_ticker_file_arg(prog: str | None = None, description: str | None = None) -> str | None:
     """Parse `--ticker-file` from `sys.argv` and return the raw value (or None).
 
-    Shared helper so every module in `modules/` exposes the same CLI surface
+    Shared helper for scripts that expose the same ticker-file CLI surface
     without duplicating argparse boilerplate. The returned value is passed
     straight to `FileUtils(ticker_file=...)`, which handles resolution and
     defaulting.
