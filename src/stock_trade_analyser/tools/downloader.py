@@ -1,16 +1,58 @@
+from __future__ import annotations
+
 import os
 import time
 import logging
-from enum import Enum
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
-import yfinance as yf
-import pandas as pd
-from tvDatafeed import TvDatafeed, Interval
-
-from .file_utils import FileUtils
+if TYPE_CHECKING:
+    from .file_utils import FileUtils
 
 logger = logging.getLogger(__name__)
+
+
+def _warm_download_cache() -> None:
+    """Initialize Yahoo's shared caches before download workers start."""
+    try:
+        from yfinance import cache
+    except Exception:
+        return
+    for name in ("get_tz_cache", "get_cookie_cache"):
+        try:
+            handle = getattr(cache, name)()
+            if hasattr(handle, "initialise"):
+                handle.initialise()
+        except Exception:
+            # Cache warm-up is best effort; Yahoo can initialize lazily.
+            pass
+
+
+def _fetch_yahoo_prices(tickers, **kwargs):
+    """Call the Yahoo provider shared by batch and incremental downloads."""
+    import yfinance as yf
+
+    return yf.download(tickers=tickers, **kwargs)
+
+
+def download_prices(tickers: list[str], period: str, interval: str):
+    """Fetch all symbols once and return the batch for in-memory processing."""
+    if not tickers:
+        raise ValueError("No ticker symbols supplied for download")
+    provider_logger = logging.getLogger("yfinance")
+    was_disabled = provider_logger.disabled
+    provider_logger.disabled = True
+    try:
+        _warm_download_cache()
+        frame = _fetch_yahoo_prices(
+            tickers, period=period, interval=interval,
+            auto_adjust=False, progress=False, threads=True, group_by="ticker",
+        )
+    finally:
+        provider_logger.disabled = was_disabled
+    if frame is None or frame.empty:
+        raise ValueError("Yahoo Finance returned no price data")
+    return frame
 
 
 class Downloader:
@@ -21,14 +63,17 @@ class Downloader:
     Tickers without a CSV are backfilled with `period` worth of history.
     """
 
-    logger.info("Started Downloader")
     ticker_list = []
     is_download = True
 
     def __init__(self, downloader: str = "yahoo", period: str = '1y', interval: str = '1d',
                  is_threads: bool = True, is_download: bool = True, n_bars: int = 0,
-                 file_utils: FileUtils = FileUtils(), max_retries: int = 2,
+                 file_utils: FileUtils | None = None, max_retries: int = 2,
                  retry_pause: float = 2.0):
+        if file_utils is None:
+            from .file_utils import FileUtils
+
+            file_utils = FileUtils()
         self.period = '1y' if period is None else period
         self.interval = '1d' if interval is None else interval
         self.is_threads = is_threads
@@ -45,13 +90,13 @@ class Downloader:
             username = None
             logger.info("downloading from yahoo")
         if username is not None:
+            from tvDatafeed import Interval
+
             self.downloader = "tv"
             self.ticker_list = self.file_utils.read_tv_ticker()
             logger.info(type(self.interval))
-            if not isinstance(self.interval.upper(), Enum):
+            if not isinstance(self.interval, Interval):
                 self.interval = Interval(self.interval.upper())
-            else:
-                self.interval = self.interval
             if self.n_bars == 0:
                 self.n_bars = 1000
         else:
@@ -72,6 +117,8 @@ class Downloader:
           (yfinance treats `end` as exclusive). Per-ticker dedup happens
           inside `FileUtils.append_csv`.
         """
+        import pandas as pd
+
         logger.info("In yf Download")
         assert isinstance(self.interval, str)
         data = pd.DataFrame()
@@ -127,6 +174,8 @@ class Downloader:
         redundant ranges, which then tripped the retry path and produced
         several extra download passes per run.
         """
+        import pandas as pd
+
         if not existing_tickers:
             logger.info("No existing tickers to incrementally update")
             return None
@@ -191,29 +240,8 @@ class Downloader:
 
     @staticmethod
     def _warm_yf_cache():
-        """Initialise yfinance's tz/cookie SQLite caches on the main thread.
-
-        yfinance's threaded bulk download lets each worker lazily create and
-        connect the shared SQLite caches on first use. Concurrent first-time
-        init races on the same file and surfaces as
-        ``OperationalError('unable to open database file')`` for a chunk of
-        tickers (and a downstream ``TypeError`` when the timezone lookup then
-        returns ``None``). Touching the caches once, single-threaded, removes
-        the race. Best-effort: any failure here just falls back to yfinance's
-        own lazy init.
-        """
-        try:
-            from yfinance import cache as yf_cache
-        except Exception as err:  # pragma: no cover - import guard
-            logger.warning(f"Could not import yfinance cache for warm-up: {err}")
-            return
-        for getter in ("get_tz_cache", "get_cookie_cache"):
-            try:
-                handle = getattr(yf_cache, getter)()
-                if hasattr(handle, "initialise"):
-                    handle.initialise()
-            except Exception as err:
-                logger.warning(f"yfinance {getter} warm-up failed: {err}")
+        """Warm the same caches used by the strategy batch downloader."""
+        _warm_download_cache()
 
     @staticmethod
     def _split_by_ticker(data, tickers):
@@ -222,6 +250,8 @@ class Downloader:
         Handles both the multi-ticker MultiIndex layout (``group_by='ticker'``)
         and the single-level layout returned when only one ticker is fetched.
         """
+        import pandas as pd
+
         frames = {}
         if data is None or data.empty:
             return frames
@@ -243,6 +273,8 @@ class Downloader:
         are reassembled into a ``group_by='ticker'`` MultiIndex frame so the
         rest of the pipeline is unaffected.
         """
+        import pandas as pd
+
         if not tickers:
             return pd.DataFrame()
 
@@ -256,8 +288,8 @@ class Downloader:
                     f"(attempt {attempt}/{self.max_retries}): {pending}"
                 )
                 time.sleep(self.retry_pause)
-            raw = yf.download(
-                tickers=pending,
+            raw = _fetch_yahoo_prices(
+                pending,
                 group_by='ticker',
                 threads=threads,
                 progress=False,
@@ -289,6 +321,8 @@ class Downloader:
         bars per ticker; FileUtils.append_csv then dedupes by date so existing
         CSVs are extended instead of overwritten.
         """
+        from tvDatafeed import Interval, TvDatafeed
+
         logger.info("In TV Download")
         assert isinstance(self.interval, Interval)
         new_data = None

@@ -5,7 +5,7 @@ TRADE_PYTHON := $(if $(WORKON_HOME),$(WORKON_HOME),$(HOME)/.virtualenvs)/trade/b
 PYTHON ?= $(if $(VIRTUAL_ENV),$(VIRTUAL_ENV)/bin/python,$(if $(wildcard $(TRADE_PYTHON)),$(TRADE_PYTHON),python3))
 ARGS ?=
 
-.PHONY: setup clean distclean run-rsi-bollinger backtest-rsi-bollinger run-supertrend backtest-supertrend test
+.PHONY: setup clean distclean run-rsi-bollinger backtest-rsi-bollinger run-supertrend backtest-supertrend run-wyckoff backtest-wyckoff run-sma-cash-exit backtest-sma-cash-exit test
 
 setup:
 	@echo "Creating virtual environment 'trade' using $(PYTHON_VERSION)..."
@@ -22,16 +22,28 @@ clean:
 	rm -rf *.egg-info
 
 run-rsi-bollinger:
-	@"$(PYTHON)" -m src.stock_trade_analyser.strategy $(ARGS)
+	@"$(PYTHON)" -m src.stock_trade_analyser.strategy --strategy rsi_bollinger $(ARGS)
 
 backtest-rsi-bollinger:
-	@"$(PYTHON)" -m src.stock_trade_analyser.backtest $(ARGS)
+	@"$(PYTHON)" -m src.stock_trade_analyser.backtest --strategy rsi_bollinger $(ARGS)
 
 run-supertrend:
 	@"$(PYTHON)" -m src.stock_trade_analyser.strategy --strategy supertrend $(ARGS)
 
 backtest-supertrend:
 	@"$(PYTHON)" -m src.stock_trade_analyser.backtest --strategy supertrend $(ARGS)
+
+run-wyckoff:
+	@"$(PYTHON)" -m src.stock_trade_analyser.strategy --strategy wyckoff $(ARGS)
+
+backtest-wyckoff:
+	@"$(PYTHON)" -m src.stock_trade_analyser.backtest --strategy wyckoff $(ARGS)
+
+run-sma-cash-exit:
+	@"$(PYTHON)" -m src.stock_trade_analyser.strategy --strategy sma_cash_exit $(ARGS)
+
+backtest-sma-cash-exit:
+	@"$(PYTHON)" -m src.stock_trade_analyser.backtest --strategy sma_cash_exit $(ARGS)
 
 test:
 	"$(PYTHON)" -m pytest

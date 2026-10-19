@@ -1,0 +1,112 @@
+{
+    "default_strategy": "rsi_bollinger",
+    "backtest_defaults": {
+        "initial_capital": 100000.0,
+        "quantity": 1,
+        "position_sizing": "capital",
+        "capital_allocation_pct": 100.0,
+        "commission_bps": 0.0,
+        "slippage_bps": 0.0,
+        "close_at_end": true
+    },
+    "backtest_columns": [
+        "ticker", "initial_capital", "final_equity", "total_trades", "total_buys",
+        "total_sells", "winning_trades", "losing_trades", "breakeven_trades",
+        "net_profit", "total_return_pct", "win_rate_pct", "max_drawdown_pct", "message"
+    ],
+    "strategies": {
+        "rsi_bollinger": {
+            "label": "ChartArt RSI + Bollinger Bands",
+            "report_label": "ChartArt RSI + Bollinger Bands (long only)",
+            "implementation": ".rsi_bollinger:RsiBollingerStrategy",
+            "parameters": {
+                "rsi_period": "int",
+                "bb_period": "int",
+                "bb_multiplier": "float",
+                "rsi_threshold": "float"
+            },
+            "scan_filename": "rsi_bolinger.csv",
+            "backtest_filename": "rsi_bolinger_backtest.csv",
+            "scan_fields": ["rsi", "bb_lower", "bb_upper"],
+            "entry_description": "Simultaneous RSI and lower-band upward crossovers; next bar open.",
+            "exit_description": "Simultaneous RSI and upper-band downward crossovers; next bar open; no shorts.",
+            "no_buys_message": "No simultaneous RSI/lower-band upward crossover.",
+            "minimum_description": "both crossovers",
+            "backtest": {}
+        },
+        "supertrend": {
+            "label": "SuperTrend",
+            "report_label": "KivancOzbilgic SuperTrend (long only)",
+            "implementation": ".supertrend:SuperTrendStrategy",
+            "parameters": {
+                "atr_period": "int",
+                "atr_multiplier": "float",
+                "source": "str",
+                "change_atr": "bool",
+                "from_date": "str",
+                "to_date": "str",
+                "timezone": "str"
+            },
+            "scan_filename": "supertrend.csv",
+            "backtest_filename": "supertrend_backtest.csv",
+            "scan_fields": ["trend", "supertrend", "atr"],
+            "entry_description": "Upward SuperTrend reversal inside the trading window; next bar open.",
+            "exit_description": "Downward SuperTrend reversal inside the trading window; next bar open; no shorts.",
+            "no_buys_message": "No upward SuperTrend reversal within configured trading window.",
+            "minimum_description": "a SuperTrend reversal",
+            "backtest": {}
+        },
+        "wyckoff": {
+            "label": "Wyckoff Schematic",
+            "report_label": "Kingshuk Ghosh Wyckoff Schematic (long only)",
+            "implementation": ".wyckoff:WyckoffStrategy",
+            "parameters": {
+                "lookback": "int",
+                "volume_multiplier": "float",
+                "climax_volume_addition": "float",
+                "range_period": "int",
+                "narrow_range_multiplier": "float",
+                "preliminary_period": "int",
+                "climax_period": "int",
+                "sweep_period": "int",
+                "rally_change_pct": "float",
+                "secondary_test_tolerance_pct": "float",
+                "spring_recovery_pct": "float",
+                "test_range_tolerance": "float",
+                "test_volume_multiplier": "float",
+                "sos_volume_multiplier": "float",
+                "buy_events": "str_list",
+                "exit_events": "str_list"
+            },
+            "scan_filename": "wyckoff.csv",
+            "backtest_filename": "wyckoff_backtest.csv",
+            "scan_fields": ["phase", "pattern", "events", "support", "resistance"],
+            "entry_description": "Configured Wyckoff events ({buy_events}); next bar open.",
+            "exit_description": "Configured Wyckoff events ({exit_events}); next bar open; no shorts.",
+            "no_buys_message": "No configured Wyckoff buy events ({buy_events}).",
+            "minimum_description": "Wyckoff volume and range averages",
+            "backtest": {}
+        },
+        "sma_cash_exit": {
+            "label": "SMA crossover with cash SL/TP",
+            "report_label": "adolgov SMA crossover with cash SL/TP (long only)",
+            "implementation": ".sma_cash_exit:SmaCashExitStrategy",
+            "parameters": {
+                "fast_period": "int",
+                "slow_period": "int",
+                "take_profit_cash": "float",
+                "stop_loss_cash": "float",
+                "point_value": "float",
+                "tick_size": "float"
+            },
+            "scan_filename": "sma_cash_exit.csv",
+            "backtest_filename": "sma_cash_exit_backtest.csv",
+            "scan_fields": ["fast_sma", "slow_sma"],
+            "entry_description": "Upward SMA crossover opens a long at the next bar open. Cash SL/TP brackets activate after the entry bar closes, starting with the following bar.",
+            "exit_description": "Downward SMA crossover closes an existing long at the next bar open, or cash SL/TP closes it intrabar; no shorts. Cash SL/TP brackets activate after the entry bar closes, starting with the following bar.",
+            "no_buys_message": "No upward SMA crossover.",
+            "minimum_description": "SMA crossover",
+            "backtest": {}
+        }
+    }
+}

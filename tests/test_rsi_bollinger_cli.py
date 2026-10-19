@@ -8,8 +8,15 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from stock_trade_analyser.strategy.cli import load_prices, main, read_tickers
+from stock_trade_analyser.strategy.cli import main
+from stock_trade_analyser.tools.data_utils import load_prices
+from stock_trade_analyser.tools.file_utils import read_tickers
 from stock_trade_analyser.strategy import cli
+from stock_trade_analyser.tools import data_utils, downloader
+
+
+# These cases verify explicit fixed-quantity execution, not the CLI default.
+pytestmark = pytest.mark.usefixtures("fixed_position_registry")
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,7 +45,7 @@ def prevent_live_downloads(monkeypatch):
     def unexpected_download(*args, **kwargs):
         pytest.fail("CLI tests must use an explicit download mock or --no-download")
 
-    monkeypatch.setattr(cli, "download_prices", unexpected_download)
+    monkeypatch.setattr(downloader, "download_prices", unexpected_download)
 
 
 @pytest.fixture
@@ -277,7 +284,7 @@ def mock_cached_download(monkeypatch, cached_prices):
         calls.append((list(tickers), period, interval))
         return pd.concat({ticker: frame.copy() for ticker in tickers}, axis=1)
 
-    monkeypatch.setattr(cli, "download_prices", download)
+    monkeypatch.setattr(downloader, "download_prices", download)
     return calls
 
 
@@ -487,7 +494,7 @@ def test_download_failure_reports_error_and_does_not_backtest_stale_cache(
     def fail_download(*args):
         raise ValueError("Yahoo Finance returned no price data")
 
-    monkeypatch.setattr(cli, "download_prices", fail_download)
+    monkeypatch.setattr(downloader, "download_prices", fail_download)
     assert main(["--ticker-file", str(ticker_file), "--data-dir", str(data_dir),
                  "--output-dir", str(report_dir)], mode="backtest") == 1
     summary = pd.read_csv(report_dir / BACKTEST_SUMMARY)
@@ -513,7 +520,7 @@ def test_full_ticker_list_downloads_once_and_uses_memory_instead_of_csv(
     def unexpected_cache_read(*args):
         pytest.fail("Downloaded prices must be passed directly to the strategy")
 
-    monkeypatch.setattr(cli, "load_prices", unexpected_cache_read)
+    monkeypatch.setattr(data_utils, "load_prices", unexpected_cache_read)
     assert main(["--ticker-file", str(ticker_file), "--data-dir", str(destination),
                  "--output-dir", str(report_dir)], mode=mode) == 0
 
@@ -593,7 +600,7 @@ def test_partial_bulk_failure_keeps_successes_without_retry_or_stale_cache_fallb
         calls.append((list(tickers), period, interval))
         return pd.concat(parts, axis=1)
 
-    monkeypatch.setattr(cli, "download_prices", partial_download)
+    monkeypatch.setattr(downloader, "download_prices", partial_download)
     report_dir = tmp_path / "report"
     for ticker in ("MISSING", "BROKEN"):
         target = report_dir / ticker
@@ -632,7 +639,7 @@ def test_whole_batch_failure_reports_all_tickers_after_one_attempt(
         calls.append((list(tickers), period, interval))
         raise RuntimeError("batch connection failed")
 
-    monkeypatch.setattr(cli, "download_prices", fail_batch)
+    monkeypatch.setattr(downloader, "download_prices", fail_batch)
     report_dir = tmp_path / "report"
     assert main(["--ticker-file", str(ticker_file), "--data-dir", str(data_dir),
                  "--output-dir", str(report_dir)], mode="backtest") == 1

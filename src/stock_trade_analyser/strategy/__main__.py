@@ -1,4 +1,4 @@
-"""Run the RSI/Bollinger scanner with ``python -m stock_trade_analyser.strategy``."""
+"""Run the configured scanner with ``python -m stock_trade_analyser.strategy``."""
 
 from .cli import main
 

@@ -1,1 +1,1 @@
-"""Backtesting for the long-only RSI and Bollinger Bands strategy."""
+"""Shared long-only backtesting for the configured trading strategies."""

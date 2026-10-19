@@ -13,7 +13,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import numpy as np
 import pandas as pd
 
-from .rsi_bollinger import normalize_ohlcv
+from .base import TradingStrategy
+from ..tools.data_utils import normalize_ohlcv
 
 
 def _configured_date(value: str, name: str) -> date:
@@ -58,7 +59,7 @@ def _atr(frame: pd.DataFrame, period: int, use_wilder: bool) -> np.ndarray:
 
 
 @dataclass(frozen=True)
-class SuperTrendStrategy:
+class SuperTrendStrategy(TradingStrategy):
     """Generate close-confirmed BUY/EXIT events from Pine's carried bands.
 
     A bearish-to-bullish reversal opens a long; the opposite reversal only
@@ -109,6 +110,11 @@ class SuperTrendStrategy:
             ZoneInfo(self.timezone)
         except (ValueError, ZoneInfoNotFoundError) as exc:
             raise ValueError("timezone must identify a valid IANA timezone.") from exc
+
+    @property
+    def minimum_bars(self) -> int:
+        """History required for ATR and a subsequent trend reversal."""
+        return self.atr_period + (1 if self.change_atr else 2)
 
     def _in_window(self, index: pd.DatetimeIndex) -> np.ndarray:
         if not isinstance(index, pd.DatetimeIndex):

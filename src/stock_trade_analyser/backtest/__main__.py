@@ -1,4 +1,4 @@
-"""Run the long-only RSI/Bollinger backtest."""
+"""Run the selected strategy's long-only backtest."""
 
 from ..strategy.cli import main
 

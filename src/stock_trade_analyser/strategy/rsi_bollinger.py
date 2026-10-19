@@ -11,6 +11,9 @@ from numbers import Integral, Real
 import numpy as np
 import pandas as pd
 
+from .base import TradingStrategy
+from ..tools.data_utils import normalize_ohlcv
+
 
 def _wilder_rsi(close: pd.Series, period: int) -> pd.Series:
     """Seed Wilder averages with the first ``period`` valid price changes."""
@@ -41,61 +44,8 @@ def _wilder_rsi(close: pd.Series, period: int) -> pd.Series:
     return pd.Series(result, index=close.index, name="rsi")
 
 
-def normalize_ohlcv(data: pd.DataFrame) -> pd.DataFrame:
-    """Copy, validate and chronologically order a single-symbol OHLCV frame.
-
-    Open, high, low and close are required; volume is optional because the
-    source strategy does not use it. Numeric strings are accepted, while
-    missing prices and duplicate timestamps are rejected rather than filled.
-    """
-    if not isinstance(data, pd.DataFrame):
-        raise TypeError("Price data must be a pandas DataFrame.")
-    if isinstance(data.columns, pd.MultiIndex):
-        raise ValueError("Price data must have single-level OHLCV columns.")
-    columns = [str(column).strip().lower() for column in data.columns]
-    if len(columns) != len(set(columns)):
-        raise ValueError("Price data has duplicate column names.")
-    frame = data.copy()
-    frame.columns = columns
-    required = ("open", "high", "low", "close")
-    missing = [column for column in required if column not in frame]
-    if missing:
-        raise ValueError(f"Missing required OHLC columns: {', '.join(missing)}")
-    if isinstance(frame.index, pd.MultiIndex):
-        raise ValueError("Price data must have a single timestamp index.")
-    if frame.index.hasnans:
-        raise ValueError("Price data has missing timestamps.")
-    if frame.index.has_duplicates:
-        raise ValueError("Price data has duplicate timestamps.")
-    try:
-        frame = frame.sort_index()
-    except TypeError as exc:
-        raise ValueError("Price timestamps must be chronologically sortable.") from exc
-
-    numeric_columns = list(required) + (["volume"] if "volume" in frame else [])
-    for column in numeric_columns:
-        try:
-            frame[column] = pd.to_numeric(frame[column], errors="raise").astype(float)
-        except (ValueError, TypeError) as exc:
-            raise ValueError(f"Column {column!r} must contain numeric values.") from exc
-        values = frame[column].to_numpy()
-        if not np.isfinite(values).all():
-            raise ValueError(f"Column {column!r} must contain finite values.")
-        if column == "volume":
-            if (values < 0).any():
-                raise ValueError("Volume cannot be negative.")
-        elif (values <= 0).any():
-            raise ValueError(f"Column {column!r} must contain positive prices.")
-
-    invalid_high = frame["high"] < frame[["open", "low", "close"]].max(axis=1)
-    invalid_low = frame["low"] > frame[["open", "high", "close"]].min(axis=1)
-    if invalid_high.any() or invalid_low.any():
-        raise ValueError("OHLC prices must satisfy low <= open/close <= high.")
-    return frame
-
-
 @dataclass(frozen=True)
-class RsiBollingerStrategy:
+class RsiBollingerStrategy(TradingStrategy):
     """Generate buy and close-long events without creating short positions.
 
     Entries require RSI crossing above the configured threshold and close
@@ -129,6 +79,11 @@ class RsiBollingerStrategy:
             or not 0 < self.rsi_threshold < 100
         ):
             raise ValueError("rsi_threshold must be between 0 and 100.")
+
+    @property
+    def minimum_bars(self) -> int:
+        """History required for both indicator crossings."""
+        return max(self.bb_period + 1, self.rsi_period + 2)
 
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
         frame = normalize_ohlcv(data)

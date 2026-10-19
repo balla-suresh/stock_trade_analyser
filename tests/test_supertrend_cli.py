@@ -9,6 +9,11 @@ import pandas as pd
 import pytest
 
 from stock_trade_analyser.strategy import cli
+from stock_trade_analyser.tools import data_utils, downloader
+
+
+# These cases verify explicit fixed-quantity execution, not the CLI default.
+pytestmark = pytest.mark.usefixtures("fixed_position_registry")
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +38,7 @@ def prevent_live_downloads(monkeypatch):
     def unexpected_download(*args, **kwargs):
         pytest.fail("SuperTrend CLI tests must mock download_prices or disable downloading")
 
-    monkeypatch.setattr(cli, "download_prices", unexpected_download)
+    monkeypatch.setattr(downloader, "download_prices", unexpected_download)
 
 
 @pytest.fixture
@@ -234,8 +239,8 @@ def test_all_tickers_downloaded_once_and_processed_in_memory(tmp_path, run_confi
     def no_disk_reread(*args, **kwargs):
         pytest.fail("Freshly downloaded data must be used directly in memory")
 
-    monkeypatch.setattr(cli, "download_prices", batch_download)
-    monkeypatch.setattr(cli, "load_prices", no_disk_reread)
+    monkeypatch.setattr(downloader, "download_prices", batch_download)
+    monkeypatch.setattr(data_utils, "load_prices", no_disk_reread)
     path = run_config / "day.json"
     settings = json.loads(path.read_text())
     settings["download"]["is_download"] = True

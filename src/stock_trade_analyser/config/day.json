@@ -1,4 +1,5 @@
 {
+    "ticker_file": "data/tickers_test.csv",
     "download": {
         "interval": "1d",
         "period": "5y",
@@ -19,6 +20,32 @@
         "from_date": "2018-09-01",
         "to_date": "9999-01-01",
         "timezone": "Asia/Kolkata"
+    },
+    "wyckoff": {
+        "lookback": 100,
+        "volume_multiplier": 1.5,
+        "climax_volume_addition": 0.5,
+        "range_period": 20,
+        "narrow_range_multiplier": 0.6,
+        "preliminary_period": 50,
+        "climax_period": 30,
+        "sweep_period": 20,
+        "rally_change_pct": 0.01,
+        "secondary_test_tolerance_pct": 0.005,
+        "spring_recovery_pct": 0.01,
+        "test_range_tolerance": 0.02,
+        "test_volume_multiplier": 0.8,
+        "sos_volume_multiplier": 1.3,
+        "buy_events": ["SPRING", "SOS", "LPS"],
+        "exit_events": ["BC", "UTAD", "LPSY"]
+    },
+    "sma_cash_exit": {
+        "fast_period": 20,
+        "slow_period": 40,
+        "take_profit_cash": 100.0,
+        "stop_loss_cash": 20.0,
+        "point_value": 1.0,
+        "tick_size": 0.01
     },
     "fbb": {
         "length": 200,
